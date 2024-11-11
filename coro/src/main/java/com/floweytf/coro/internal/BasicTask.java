@@ -122,5 +122,9 @@ public abstract class BasicTask<T> implements Task<T> {
         complete(Result.error(val));
     }
 
+    protected CoroutineExecutor getExecutor() {
+        return (CoroutineExecutor) MY_EXECUTOR.get(this);
+    }
+
     protected abstract void run(int state, boolean isExceptional, Object resVal);
 }

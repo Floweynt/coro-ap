@@ -1,6 +1,7 @@
 package com.floweytf.coro;
 
 import com.floweytf.coro.concepts.Awaitable;
+import com.floweytf.coro.concepts.CoroutineExecutor;
 import com.floweytf.coro.internal.DummyCoroReturnTypeWrapper;
 
 /**
@@ -92,6 +93,21 @@ public class Co {
      */
     public static <T> T await(Awaitable<T> awaitable) {
         throw new AssertionError("Co.await(T) should never be called directly; have you set up the AP properly?");
+    }
+
+    /**
+     * Returns the current {@link CoroutineExecutor} for the executing coroutine.
+     * <p>
+     * This method is used to retrieve the current {@link CoroutineExecutor} in the coroutine system. If called
+     * directly, it throws an {@link AssertionError} indicating that the annotation processor (AP) is not properly
+     * configured.
+     *
+     * @return The current {@link CoroutineExecutor}.
+     * @throws AssertionError If called directly, indicating the AP is not set up.
+     */
+    public static CoroutineExecutor currentExecutor() {
+        throw new AssertionError("Co.currentExecutor() should never be called directly; have you set up the AP " +
+            "properly?");
     }
 }
 

@@ -20,9 +20,6 @@ import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.MethodNode;
 
-/**
- * Bytecode-level instrumentation for coroutines.
- */
 public class CoroutineTransformer {
     private static class SigGenerator extends Types.SignatureGenerator {
         private final StringBuilder sb = new StringBuilder();
@@ -187,7 +184,7 @@ public class CoroutineTransformer {
                 }
 
                 if (matchCount != coroMethodSignatures.size()) {
-                    throw new AssertionError("#method mismatch " + coroMethodSignatures);
+                    throw new AssertionError("method number mismatch " + coroMethodSignatures);
                 }
 
                 writeClass(classNode, classFile);

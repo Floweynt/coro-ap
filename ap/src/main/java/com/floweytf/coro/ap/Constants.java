@@ -25,9 +25,11 @@ public class Constants {
     public static final String TASK_CLASS = "com.floweytf.coro.concepts.Task";
     public static final String AWAITABLE_CLASS = "com.floweytf.coro.concepts.Awaitable";
     public static final String BASIC_TASK_CLASS = "com.floweytf.coro.internal.BasicTask";
+    public static final String COROUTINE_EXECUTOR_CLASS = "com.floweytf.coro.concepts.CoroutineExecutor";
     public static final String AWAIT_KW = "await";
     public static final String YIELD_KW = "yield";
     public static final String RET_KW = "ret";
+    public static final String CURRENT_EXECUTOR_KW = "currentExecutor";
 
     public static final String COROUTINE_ANN_BIN = COROUTINE_ANN.replace('.', '/');
     public static final String CO_CLASS_BIN = CO_CLASS.replace('.', '/');
@@ -35,6 +37,7 @@ public class Constants {
     public static final String TASK_CLASS_BIN = TASK_CLASS.replace('.', '/');
     public static final String AWAITABLE_CLASS_BIN = AWAITABLE_CLASS.replace('.', '/');
     public static final String OBJECT_CLASS_BIN = Type.getInternalName(Object.class);
+    public static final String COROUTINE_EXECUTOR_CLASS_BIN = COROUTINE_EXECUTOR_CLASS.replace('.', '/');
     public static final String THROWABLE_CLASS_BIN = Type.getInternalName(Throwable.class);
 
     // protected static <T, U> void suspendHelper(Awaitable<T> awaitable, BasicTask<U> self, int newState) {
@@ -75,6 +78,16 @@ public class Constants {
         String.format(
             "(IZL%s;)V",
             OBJECT_CLASS_BIN
+        )
+    );
+
+    // protected CoroutineExecutor getExecutor() {
+    public static final MethodDesc BASIC_TASK_CLASS_GET_EXECUTOR = new MethodDesc(
+        BASIC_TASK_CLASS_BIN,
+        "getExecutor",
+        String.format(
+            "()L%s;",
+            COROUTINE_EXECUTOR_CLASS_BIN
         )
     );
 }

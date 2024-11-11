@@ -6,8 +6,10 @@ import static com.floweytf.coro.ap.Constants.BASIC_TASK_CLASS_BIN;
 import static com.floweytf.coro.ap.Constants.BASIC_TASK_CLASS_COMPLETE_ERROR;
 import static com.floweytf.coro.ap.Constants.BASIC_TASK_CLASS_COMPLETE_RUN;
 import static com.floweytf.coro.ap.Constants.BASIC_TASK_CLASS_COMPLETE_SUCCESS;
+import static com.floweytf.coro.ap.Constants.BASIC_TASK_CLASS_GET_EXECUTOR;
 import static com.floweytf.coro.ap.Constants.BASIC_TASK_CLASS_SUSPEND;
 import static com.floweytf.coro.ap.Constants.CO_CLASS_BIN;
+import static com.floweytf.coro.ap.Constants.CURRENT_EXECUTOR_KW;
 import static com.floweytf.coro.ap.Constants.RET_KW;
 import static com.floweytf.coro.ap.Constants.THROWABLE_CLASS_BIN;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
@@ -59,9 +61,6 @@ import org.objectweb.asm.tree.analysis.BasicValue;
 import org.objectweb.asm.tree.analysis.Frame;
 import org.objectweb.asm.util.TraceClassVisitor;
 
-/**
- * Information for analyzing and transforming a coroutine method.
- */
 public class MethodAnalysisContext {
     private static final int LVT_THIS = 0;
     private static final int LVT_STATE = 1;
@@ -230,15 +229,17 @@ public class MethodAnalysisContext {
         resumeInstr.add(new VarInsnNode(ALOAD, LVT_THIS));
         while (localIndex < frame.getLocals()) {
             final var local = frame.getLocal(localIndex);
-            final var fieldNum = getOrAllocateFieldId(local.getType(), allocMap);
+            if (local.getType() != null) {
+                final var fieldNum = getOrAllocateFieldId(local.getType(), allocMap);
 
-            output.add(new InsnNode(DUP));
-            output.add(loadLocal(remapLVT(localIndex), local));
-            output.add(scratchField(PUTFIELD, fieldNum, local));
+                output.add(new InsnNode(DUP));
+                output.add(loadLocal(remapLVT(localIndex), local));
+                output.add(scratchField(PUTFIELD, fieldNum, local));
 
-            resumeInstr.add(new InsnNode(DUP));
-            resumeInstr.add(scratchField(GETFIELD, fieldNum, local));
-            resumeInstr.add(storeLocal(remapLVT(localIndex), local));
+                resumeInstr.add(new InsnNode(DUP));
+                resumeInstr.add(scratchField(GETFIELD, fieldNum, local));
+                resumeInstr.add(storeLocal(remapLVT(localIndex), local));
+            }
 
             localIndex += local.getSize();
         }
@@ -334,9 +335,9 @@ public class MethodAnalysisContext {
                 output.add(new IincInsnNode(remapLVT(iincInsnNode.var), iincInsnNode.incr));
             } else if (isCoMethod(instruction)) {
                 final var methodInstr = (MethodInsnNode) instruction;
-                if (methodInstr.name.equals(AWAIT_KW)) {
-                    codegenSuspend(output, frame);
-                } else if (methodInstr.name.equals(RET_KW)) {
+                switch (methodInstr.name) {
+                case AWAIT_KW -> codegenSuspend(output, frame);
+                case RET_KW -> {
                     if (i + 1 >= instructions.length || instructions[i + 1].getOpcode() != ARETURN) {
                         throw new AssertionError();
                     }
@@ -354,11 +355,26 @@ public class MethodAnalysisContext {
                     output.add(new InsnNode(RETURN));
                     i++;
                 }
+                case CURRENT_EXECUTOR_KW -> {
+                    output.add(new VarInsnNode(ALOAD, LVT_THIS));
+                    output.add(BASIC_TASK_CLASS_GET_EXECUTOR.instr(INVOKEVIRTUAL));
+                }
+                default -> throw new IllegalStateException();
+                }
             } else {
                 // copy over the instruction
                 output.add(instruction.clone(labelCloner));
             }
         }
+
+        // TODO: clone annotations
+        coMethod.tryCatchBlocks.stream().map(block -> new TryCatchBlockNode(
+            labelCloner.get(block.start),
+            labelCloner.get(block.end),
+            labelCloner.get(block.handler),
+            block.type
+        )).forEach(taskImplRun.tryCatchBlocks::add);
+        coMethod.tryCatchBlocks = new ArrayList<>();
     }
 
     private void codegenRunImplEhWrapper(LabelNode beginLabel, LabelNode endLabel) {
@@ -518,10 +534,11 @@ public class MethodAnalysisContext {
     public static ClassNode generate(ClassNode owner, MethodNode node, int id) {
         final var output = new MethodAnalysisContext(owner, node, id).codegen();
 
-        if (Boolean.getBoolean("coro.debug")) {
+        if (Boolean.getBoolean("coro.debug") || true) {
             TraceClassVisitor tcv = new TraceClassVisitor(new PrintWriter(System.out));
             output.accept(tcv);
         }
+
         return output;
     }
 }

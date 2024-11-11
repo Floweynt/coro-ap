@@ -101,14 +101,26 @@ public class Main {
     }
 
     @Coroutine
+    public static Task<Void> test8() {
+        try {
+            Co.await(test7());
+        } catch (IllegalStateException e) {
+            System.out.println("caught exception!");
+        }
+        return Co.ret();
+    }
+
+    @Coroutine
     public static Task<Void> runTests() {
         Co.await(test0());
         Co.await(test1());
+        System.out.println(Co.currentExecutor());
         Co.await(test2());
         Co.await(test3());
         Co.await(test4());
         Co.await(test5(42));
         Co.await(test6(10));
+        Co.await(test8());
         Co.await(test7());
         System.out.println("shouldn't be printed");
         return Co.ret();

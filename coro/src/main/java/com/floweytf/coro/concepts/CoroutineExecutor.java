@@ -35,5 +35,15 @@ public interface CoroutineExecutor {
      * continuation synchronously in the current execution context. This may be useful if your coroutine wishes to
      * manage its own scheduling behavior dynamically with specialized awaitables to modify the execution context.
      */
-    CoroutineExecutor EAGER = Runnable::run;
+    CoroutineExecutor EAGER = new CoroutineExecutor() {
+        @Override
+        public void executeTask(Runnable handler) {
+            handler.run();
+        }
+
+        @Override
+        public String toString() {
+            return "CoroutineExecutor.EAGER";
+        }
+    };
 }
