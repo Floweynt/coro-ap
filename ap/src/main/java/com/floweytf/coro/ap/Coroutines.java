@@ -52,8 +52,7 @@ public class Coroutines implements TaskListener {
     @Override
     public void finished(TaskEvent event) {
         switch (event.getKind()) {
-        case ANALYZE ->
-            ((JCTree.JCCompilationUnit) event.getCompilationUnit()).accept(new ValidateCoro(this, event));
+        case ANALYZE -> ((JCTree.JCCompilationUnit) event.getCompilationUnit()).accept(new ValidateCoro(this, event));
         case COMPILATION -> new CoroutineTransformer(this).process(coroutineMethods);
         }
     }

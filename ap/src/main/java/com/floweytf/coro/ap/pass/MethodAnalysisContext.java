@@ -62,7 +62,6 @@ public class MethodAnalysisContext {
     private final int originalLvtArgSize;
     private final ClassNode owner;
     private final String generatedType;
-    private final Type thisType;
     private final List<Type> argTypes;
 
     private final AbstractInsnNode[] instructions;
@@ -86,8 +85,7 @@ public class MethodAnalysisContext {
             throw new RuntimeException(e);
         }
 
-
-        this.thisType = Type.getType("L" + owner.name + ";");
+        final var thisType = Type.getType("L" + owner.name + ";");
         this.argTypes = Arrays.asList(Type.getMethodType(coMethod.desc).getArgumentTypes());
         if (!isStatic(coMethod)) {
             argTypes.add(0, thisType);
@@ -365,7 +363,7 @@ public class MethodAnalysisContext {
         classNode.outerMethodDesc = runImpl.desc;
         classNode.innerClasses.add(new InnerClassNode(generatedType, null, null, 0));
         owner.innerClasses.add(new InnerClassNode(generatedType, null, null, 0));
-        if(owner.nestMembers == null) {
+        if (owner.nestMembers == null) {
             owner.nestMembers = new ArrayList<>();
         }
         owner.nestMembers.add(generatedType);

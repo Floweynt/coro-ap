@@ -31,7 +31,7 @@ public class ReflectTool {
     }
 
     public static Method getMethod(@NotNull Class<?> clazz, @NotNull String mName,
-                                   @NotNull Class<?>... parameterTypes)  {
+                                   @NotNull Class<?>... parameterTypes) {
         Method method = null;
         Class<?> original = clazz;
         while (clazz != null) {

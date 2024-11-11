@@ -8,7 +8,8 @@ import org.jetbrains.annotations.ApiStatus;
 /**
  * Represents some task may be awaited.
  * <br>
- * An awaitable
+ * An awaitable abstractly represents some non-blocking/asynchronous task. An async task will typically perform some
+ * logic, then invoke a callback function with either the result or and error.
  * <p>
  * As an example:
  * <pre>{@code

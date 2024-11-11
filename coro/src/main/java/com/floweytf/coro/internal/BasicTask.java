@@ -14,7 +14,7 @@ import org.jetbrains.annotations.ApiStatus;
 public abstract class BasicTask<T> implements Task<T> {
     private static final class Entry<T> {
         public Entry<T> next;
-        public Consumer<Result<T>> handler;
+        public final Consumer<Result<T>> handler;
 
         private Entry(Consumer<Result<T>> handler) {
             this.handler = handler;

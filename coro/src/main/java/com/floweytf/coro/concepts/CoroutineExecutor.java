@@ -10,6 +10,11 @@ import org.jetbrains.annotations.ApiStatus;
  */
 @ApiStatus.OverrideOnly
 public interface CoroutineExecutor {
+    /**
+     * Dispatch the execution of a coroutine continuation.
+     *
+     * @param handler The task to run.
+     */
     void executeTask(Runnable handler);
 
     CoroutineExecutor EAGER = Runnable::run;
