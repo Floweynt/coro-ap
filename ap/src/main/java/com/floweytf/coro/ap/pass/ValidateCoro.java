@@ -207,11 +207,4 @@ public class ValidateCoro extends TreeScanner {
         super.visitReturn(tree);
         lastReturn = null;
     }
-
-    @Override
-    public void visitTry(JCTree.JCTry tree) {
-        if (tree.finalizer != null && currentContext().kind != CoroutineKind.NONE) {
-            reportError(tree, "finally {} not allowed in Coroutine method (yet) due to implementation constraints");
-        }
-    }
 }
