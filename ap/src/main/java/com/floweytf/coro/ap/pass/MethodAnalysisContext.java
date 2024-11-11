@@ -67,9 +67,8 @@ public class MethodAnalysisContext {
     private static final int LVT_STATE = 1;
     private static final int LVT_IS_EXCEPTION = 2;
     private static final int LVT_RES_VAL = 3;
-    private static final int LVT_SCRATCH_LONG = 4; // 5
-    private static final int LVT_SCRATCH_SMALL = 6;
-    private static final int LVT_ARG_SIZE = 8;
+    private static final int LVT_SCRATCH_SMALL = 4;
+    private static final int LVT_ARG_SIZE = 5;
 
     private final ClassNode coMethodOwner;
     private final MethodNode coMethod;
@@ -260,13 +259,17 @@ public class MethodAnalysisContext {
             for (int j = frame.getStackSize() - 2; j >= 0; j--) {
                 final var stack = frame.getStack(j);
                 final var fieldId = getOrAllocateFieldId(stack.getType(), allocMap);
-                output.add(new VarInsnNode(ASTORE, LVT_SCRATCH_LONG));
                 output.add(new VarInsnNode(ALOAD, LVT_THIS));
-                output.add(new VarInsnNode(ALOAD, LVT_SCRATCH_LONG));
+                if(stack.getType().getSize() == 2) {
+                    output.add(new InsnNode(DUP_X2));
+                } else {
+                    output.add(new InsnNode(DUP_X1));
+                }
+                output.add(new InsnNode(POP));
                 output.add(scratchField(PUTFIELD, fieldId, stack));
 
                 // reverse order
-                output.add(scratchField(GETFIELD, fieldId, stack));
+                resumeReversed.add(scratchField(GETFIELD, fieldId, stack));
                 resumeReversed.add(new VarInsnNode(ALOAD, LVT_THIS));
             }
             output.add(new VarInsnNode(ALOAD, LVT_SCRATCH_SMALL));
