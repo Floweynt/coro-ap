@@ -16,9 +16,9 @@ public record CoroNames(
             names.fromString(Constants.COROUTINE_ANN),
             names.fromString(Constants.CO_CLASS),
             names.fromString(Constants.TASK_CLASS),
-            names.fromString(Constants.AWAIT),
-            names.fromString(Constants.YIELD),
-            names.fromString(Constants.RET)
+            names.fromString(Constants.AWAIT_KW),
+            names.fromString(Constants.YIELD_KW),
+            names.fromString(Constants.RET_KW)
         );
     }
 }

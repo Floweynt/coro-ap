@@ -53,14 +53,14 @@ public abstract class BasicTask<T> implements Task<T> {
     }
 
     @Override
-    public void begin(CoroutineExecutor executor) {
+    public Task<T> begin(CoroutineExecutor executor) {
         // Need non-weak CAS here, since this absolutely cannot fail (no loop)
-        if (!MY_EXECUTOR.compareAndSet(this, null, executor)) {
-            // already started, don't need to worry about it anymore
-            return;
+        // if it's nonnull, that means begin() was already called and there's no need to start it again
+        if (MY_EXECUTOR.compareAndSet(this, null, executor)) {
+            executor.executeTask(() -> run(0, false, null));
         }
 
-        executor.executeTask(() -> run(0, false, null));
+        return this;
     }
 
     @Override

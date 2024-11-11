@@ -76,6 +76,7 @@ public class Main {
         System.out.println("Hello from thread: " + Thread.currentThread().getName());
         System.out.println("Local variable: " + a);
         System.out.println("Argument variable: " + arg);
+        Thread.dumpStack();
         return Co.ret();
     }
 
@@ -95,6 +96,11 @@ public class Main {
     }
 
     @Coroutine
+    public static Task<Void> test7() {
+        throw new IllegalStateException();
+    }
+
+    @Coroutine
     public static Task<Void> runTests() {
         Co.await(test0());
         Co.await(test1());
@@ -103,10 +109,17 @@ public class Main {
         Co.await(test4());
         Co.await(test5(42));
         Co.await(test6(10));
+        Co.await(test7());
+        System.out.println("shouldn't be printed");
         return Co.ret();
     }
 
     public static void main(String[] args) {
-        runTests().begin();
+        runTests().begin().onComplete(x -> {
+            x.match(
+                unused -> System.out.println("Returned normally"),
+                throwable -> throwable.printStackTrace(System.out)
+            );
+        });
     }
 }

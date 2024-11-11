@@ -1,6 +1,15 @@
 package com.floweytf.coro.ap.pass;
 
 import com.floweytf.coro.ap.Constants;
+import static com.floweytf.coro.ap.Constants.AWAIT_KW;
+import static com.floweytf.coro.ap.Constants.BASIC_TASK_CLASS_BIN;
+import static com.floweytf.coro.ap.Constants.BASIC_TASK_CLASS_COMPLETE_ERROR;
+import static com.floweytf.coro.ap.Constants.BASIC_TASK_CLASS_COMPLETE_RUN;
+import static com.floweytf.coro.ap.Constants.BASIC_TASK_CLASS_COMPLETE_SUCCESS;
+import static com.floweytf.coro.ap.Constants.BASIC_TASK_CLASS_SUSPEND;
+import static com.floweytf.coro.ap.Constants.CO_CLASS_BIN;
+import static com.floweytf.coro.ap.Constants.RET_KW;
+import static com.floweytf.coro.ap.Constants.THROWABLE_CLASS_BIN;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntList;
 import it.unimi.dsi.fastutil.objects.Object2IntArrayMap;
@@ -11,7 +20,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Consumer;
+import java.util.function.BiConsumer;
+import java.util.stream.Collectors;
 import static org.objectweb.asm.Opcodes.*;
 import org.objectweb.asm.Type;
 import static org.objectweb.asm.Type.ARRAY;
@@ -32,11 +42,14 @@ import org.objectweb.asm.tree.IincInsnNode;
 import org.objectweb.asm.tree.InnerClassNode;
 import org.objectweb.asm.tree.InsnList;
 import org.objectweb.asm.tree.InsnNode;
+import org.objectweb.asm.tree.JumpInsnNode;
 import org.objectweb.asm.tree.LabelNode;
 import org.objectweb.asm.tree.LdcInsnNode;
+import org.objectweb.asm.tree.LocalVariableNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.TableSwitchInsnNode;
+import org.objectweb.asm.tree.TryCatchBlockNode;
 import org.objectweb.asm.tree.TypeInsnNode;
 import org.objectweb.asm.tree.VarInsnNode;
 import org.objectweb.asm.tree.analysis.Analyzer;
@@ -58,37 +71,62 @@ public class MethodAnalysisContext {
     private static final int LVT_SCRATCH_SMALL = 6;
     private static final int LVT_ARG_SIZE = 8;
 
+    private final ClassNode coMethodOwner;
     private final MethodNode coMethod;
-    private final int originalLvtArgSize;
-    private final ClassNode owner;
-    private final String generatedType;
+
+    private final String taskImplClassName;
+    private final ClassNode taskImplClass;
+    private final String consDesc;
+    private final MethodNode taskImplClassCons;
+    private final MethodNode taskImplRun;
+
     private final List<Type> argTypes;
 
-    private final AbstractInsnNode[] instructions;
-    private final Frame<BasicValue>[] frames;
     private final List<LabelNode> resumeLabels = new ArrayList<>();
 
     private final Map<Type, IntList> localStoragePool = new Object2ObjectOpenHashMap<>();
     private int allocFieldId = 0;
 
-    private MethodAnalysisContext(ClassNode owner, MethodNode coMethod, String generatedType) {
-        this.coMethod = coMethod;
-        this.owner = owner;
-        this.originalLvtArgSize = (Type.getArgumentsAndReturnSizes(coMethod.signature) >> 2) -
-            (isStatic(coMethod) ? 1 : 0);
+    private MethodAnalysisContext(ClassNode owner, MethodNode coMethod, int id) {
+        this.coMethodOwner = owner;
+        this.taskImplClassName = String.format("%s$%s$Coro$%d", owner.name, coMethod.name, id);
 
-        this.instructions = coMethod.instructions.toArray();
-        this.generatedType = generatedType;
-        try {
-            this.frames = new Analyzer<>(new BasicInterpreter()).analyze(owner.name, coMethod);
-        } catch (AnalyzerException e) {
-            throw new RuntimeException(e);
-        }
-
-        final var thisType = Type.getType("L" + owner.name + ";");
         this.argTypes = Arrays.asList(Type.getMethodType(coMethod.desc).getArgumentTypes());
         if (!isStatic(coMethod)) {
-            argTypes.add(0, thisType);
+            argTypes.add(0, Type.getType("L" + owner.name + ";"));
+        }
+        this.consDesc = Type.getMethodType(Type.VOID_TYPE, argTypes.toArray(Type[]::new)).getDescriptor();
+
+        this.coMethod = coMethod;
+        this.taskImplClass = new ClassNode();
+        this.taskImplClassCons = new MethodNode(0, "<init>", consDesc, null, null);
+        this.taskImplRun = BASIC_TASK_CLASS_COMPLETE_RUN.node(ACC_PROTECTED);
+
+        // setup attributes & such
+        taskImplClass.access = ACC_SUPER | ACC_SYNTHETIC;
+        taskImplClass.name = taskImplClassName;
+        taskImplClass.outerClass = coMethodOwner.name;
+        taskImplClass.superName = BASIC_TASK_CLASS_BIN;
+        taskImplClass.version = coMethodOwner.version;
+        taskImplClass.methods.add(taskImplRun);
+        taskImplClass.methods.add(taskImplClassCons);
+        taskImplClass.sourceFile = coMethodOwner.sourceFile;
+        taskImplClass.nestHostClass = coMethodOwner.name;
+        taskImplClass.outerMethod = coMethod.name;
+        taskImplClass.outerMethodDesc = coMethod.desc;
+        taskImplClass.innerClasses.add(new InnerClassNode(taskImplClassName, null, null, 0));
+        coMethodOwner.innerClasses.add(new InnerClassNode(taskImplClassName, null, null, 0));
+        if (coMethodOwner.nestMembers == null) {
+            coMethodOwner.nestMembers = new ArrayList<>();
+        }
+        coMethodOwner.nestMembers.add(taskImplClassName);
+    }
+
+    private Frame<BasicValue>[] analyze() {
+        try {
+            return new Analyzer<>(new BasicInterpreter()).analyze(coMethodOwner.name, coMethod);
+        } catch (AnalyzerException e) {
+            throw new RuntimeException(e);
         }
     }
 
@@ -113,7 +151,7 @@ public class MethodAnalysisContext {
             return false;
         }
 
-        return node.getOpcode() == INVOKESTATIC && methodInsnNode.owner.equals(Constants.CO_CLASS_BIN);
+        return node.getOpcode() == INVOKESTATIC && methodInsnNode.owner.equals(CO_CLASS_BIN);
     }
 
     public static boolean isStatic(MethodNode node) {
@@ -121,11 +159,11 @@ public class MethodAnalysisContext {
     }
 
     private FieldInsnNode scratchField(int opc, int id, BasicValue value) {
-        return new FieldInsnNode(opc, generatedType, "l" + id, value.getType().getDescriptor());
+        return new FieldInsnNode(opc, taskImplClassName, "l" + id, value.getType().getDescriptor());
     }
 
     private FieldInsnNode argField(int opc, int id, Type type) {
-        return new FieldInsnNode(opc, generatedType, "arg" + id, type.getDescriptor());
+        return new FieldInsnNode(opc, taskImplClassName, "arg" + id, type.getDescriptor());
     }
 
     private VarInsnNode loadLocal(int id, Type type) {
@@ -164,26 +202,39 @@ public class MethodAnalysisContext {
         return storeLocal(id, value.getType());
     }
 
-    private Consumer<InsnList> codegenSuspendLocals(
-        Frame<BasicValue> frame, Object2IntMap<Type> allocMap, InsnList outputInstr
-    ) {
-        if (originalLvtArgSize >= frame.getLocals()) {
-            return ignored -> {
-            };
+    private void foreachArgTypes(BiConsumer<Integer, Type> handler) {
+        int index = 0;
+        for (Type argType : argTypes) {
+            handler.accept(index, argType);
+            index += argType.getSize();
         }
+    }
+
+    private void withMethodBody(InsnList instructions, BiConsumer<LabelNode, LabelNode> handler) {
+        final var startLabel = new LabelNode();
+        final var endLabel = new LabelNode();
+
+        instructions.insert(startLabel);
+        instructions.add(endLabel);
+
+        handler.accept(startLabel, endLabel);
+    }
+
+    private Runnable codegenSuspendLocals(Frame<BasicValue> frame, Object2IntMap<Type> allocMap) {
+        final var output = taskImplRun.instructions;
 
         var localIndex = 0;
         final var resumeInstr = new InsnList();
 
-        outputInstr.add(new VarInsnNode(ALOAD, LVT_THIS));
+        output.add(new VarInsnNode(ALOAD, LVT_THIS));
         resumeInstr.add(new VarInsnNode(ALOAD, LVT_THIS));
         while (localIndex < frame.getLocals()) {
             final var local = frame.getLocal(localIndex);
             final var fieldNum = getOrAllocateFieldId(local.getType(), allocMap);
 
-            outputInstr.add(new InsnNode(DUP));
-            outputInstr.add(loadLocal(remapLVT(localIndex), local));
-            outputInstr.add(scratchField(PUTFIELD, fieldNum, local));
+            output.add(new InsnNode(DUP));
+            output.add(loadLocal(remapLVT(localIndex), local));
+            output.add(scratchField(PUTFIELD, fieldNum, local));
 
             resumeInstr.add(new InsnNode(DUP));
             resumeInstr.add(scratchField(GETFIELD, fieldNum, local));
@@ -191,16 +242,15 @@ public class MethodAnalysisContext {
 
             localIndex += local.getSize();
         }
-        outputInstr.add(new InsnNode(POP));
+        output.add(new InsnNode(POP));
         resumeInstr.add(new InsnNode(POP));
 
-        return output -> output.add(resumeInstr);
+        return () -> output.add(resumeInstr);
     }
 
-    private Consumer<InsnList> codegenSuspendStack(
-        Frame<BasicValue> frame, Object2IntMap<Type> allocMap, InsnList output
-    ) {
+    private Runnable codegenSuspendStack(Frame<BasicValue> frame, Object2IntMap<Type> allocMap) {
         final var resumeReversed = new ArrayList<AbstractInsnNode>();
+        final var output = taskImplRun.instructions;
 
         if (frame.getStackSize() > 1) {
             output.add(new VarInsnNode(ASTORE, LVT_SCRATCH_SMALL));
@@ -212,19 +262,16 @@ public class MethodAnalysisContext {
                 output.add(new VarInsnNode(ALOAD, LVT_SCRATCH_LONG));
                 output.add(scratchField(PUTFIELD, fieldId, stack));
 
-                // LOAD this
-                // get field
-
-                // reverse order because of stupid reasons
+                // reverse order
                 output.add(scratchField(GETFIELD, fieldId, stack));
                 resumeReversed.add(new VarInsnNode(ALOAD, LVT_THIS));
             }
             output.add(new VarInsnNode(ALOAD, LVT_SCRATCH_SMALL));
         }
 
-        return insnList -> {
+        return () -> {
             for (int i = resumeReversed.size() - 1; i >= 0; i--) {
-                insnList.add(resumeReversed.get(i));
+                output.add(resumeReversed.get(i));
             }
         };
     }
@@ -233,27 +280,34 @@ public class MethodAnalysisContext {
         final var allocMap = new Object2IntArrayMap<Type>();
         final var resumeLabel = new LabelNode();
 
-        final var resumeLocal = codegenSuspendLocals(frame, allocMap, output);
-        final var resumeStack = codegenSuspendStack(frame, allocMap, output);
+        final var resumeLocal = codegenSuspendLocals(frame, allocMap);
+        final var resumeStack = codegenSuspendStack(frame, allocMap);
 
         output.add(new VarInsnNode(ALOAD, LVT_THIS));
         output.add(new LdcInsnNode(resumeLabels.size()));
-        output.add(new MethodInsnNode(
-            INVOKESTATIC, Constants.BASIC_TASK_CLASS_BIN, Constants.BASIC_TASK_CLASS_SUSPEND,
-            Constants.BASIC_TASK_CLASS_SUSPEND_SIG
-        ));
+        output.add(BASIC_TASK_CLASS_SUSPEND.instr(INVOKESTATIC));
         output.add(new InsnNode(RETURN));
 
         output.add(resumeLabel);
-        resumeLocal.accept(output);
-        resumeStack.accept(output);
+        resumeLocal.run();
+        resumeStack.run();
+        final var checkEhExit = new LabelNode();
         output.add(new VarInsnNode(ALOAD, LVT_RES_VAL));
+
+        // handle exception case
+        output.add(new VarInsnNode(ILOAD, LVT_IS_EXCEPTION));
+        output.add(new JumpInsnNode(IFEQ, checkEhExit));
+        output.add(new TypeInsnNode(CHECKCAST, THROWABLE_CLASS_BIN));
+        output.add(new InsnNode(ATHROW));
+        output.add(checkEhExit);
 
         resumeLabels.add(resumeLabel);
     }
 
-    private void codegen(InsnList outputInstr) {
-        final var beginLabel = new LabelNode();
+    private void codegenRunImplCopyBody() {
+        final var instructions = coMethod.instructions.toArray();
+        final Frame<BasicValue>[] frames = analyze();
+        final var output = taskImplRun.instructions;
         final var labelCloner = new Object2ObjectOpenHashMap<LabelNode, LabelNode>() {
             @Override
             public LabelNode get(Object k) {
@@ -266,20 +320,7 @@ public class MethodAnalysisContext {
             }
         };
 
-        resumeLabels.add(beginLabel);
-        outputInstr.add(beginLabel);
-
-        // copy args into locals
-        outputInstr.add(new VarInsnNode(ALOAD, LVT_THIS));
-        int index = 0;
-        for (Type argType : argTypes) {
-            outputInstr.add(new InsnNode(DUP));
-            outputInstr.add(argField(GETFIELD, index, argType));
-            outputInstr.add(storeLocal(remapLVT(index), argType));
-            index += argType.getSize();
-        }
-        outputInstr.add(new InsnNode(POP));
-
+        // process main instruction
         for (int i = 0; i < instructions.length; i++) {
             final var instruction = instructions[i];
             final var frame = frames[i];
@@ -288,146 +329,194 @@ public class MethodAnalysisContext {
             // we also need to remap individual lvt entries, since it maybe shifted because run() takes 4 (this + 3)
             // args
             if (instruction instanceof VarInsnNode varInstNode) {
-                outputInstr.add(new VarInsnNode(varInstNode.getOpcode(), remapLVT(varInstNode.var)));
+                output.add(new VarInsnNode(varInstNode.getOpcode(), remapLVT(varInstNode.var)));
             } else if (instruction instanceof IincInsnNode iincInsnNode) {
-                outputInstr.add(new IincInsnNode(remapLVT(iincInsnNode.var), iincInsnNode.incr));
+                output.add(new IincInsnNode(remapLVT(iincInsnNode.var), iincInsnNode.incr));
             } else if (isCoMethod(instruction)) {
                 final var methodInstr = (MethodInsnNode) instruction;
-                if (methodInstr.name.equals(Constants.AWAIT)) {
-                    codegenSuspend(outputInstr, frame);
-                } else if (methodInstr.name.equals(Constants.RET)) {
+                if (methodInstr.name.equals(AWAIT_KW)) {
+                    codegenSuspend(output, frame);
+                } else if (methodInstr.name.equals(RET_KW)) {
                     if (i + 1 >= instructions.length || instructions[i + 1].getOpcode() != ARETURN) {
                         throw new AssertionError();
                     }
 
                     if (Type.getArgumentCount(methodInstr.desc) == 0) {
-                        outputInstr.add(new VarInsnNode(ALOAD, LVT_THIS));
-                        outputInstr.add(new InsnNode(ACONST_NULL));
+                        output.add(new VarInsnNode(ALOAD, LVT_THIS));
+                        output.add(new InsnNode(ACONST_NULL));
                     } else {
-                        outputInstr.add(new VarInsnNode(ALOAD, LVT_THIS));
-                        outputInstr.add(new InsnNode(SWAP));
+                        output.add(new VarInsnNode(ALOAD, LVT_THIS));
+                        output.add(new InsnNode(SWAP));
                     }
 
-                    outputInstr.add(new MethodInsnNode(
-                        INVOKEVIRTUAL,
-                        Constants.BASIC_TASK_CLASS_BIN,
-                        Constants.BASIC_TASK_CLASS_COMPLETE_SUCCESS,
-                        Constants.BASIC_TASK_CLASS_COMPLETE_SUCCESS_SIG
-                    ));
+                    output.add(BASIC_TASK_CLASS_COMPLETE_SUCCESS.instr(INVOKEVIRTUAL));
 
-                    outputInstr.add(new InsnNode(RETURN));
+                    output.add(new InsnNode(RETURN));
                     i++;
                 }
             } else {
                 // copy over the instruction
-                outputInstr.add(instruction.clone(labelCloner));
+                output.add(instruction.clone(labelCloner));
             }
         }
-
-        // reversed order
-        outputInstr.insert(new TableSwitchInsnNode(
-            0,
-            resumeLabels.size() - 1,
-            resumeLabels.get(0),
-            resumeLabels.toArray(LabelNode[]::new)
-        ));
-        outputInstr.insert(new VarInsnNode(ILOAD, LVT_STATE));
     }
 
-    private ClassNode generate() {
-        final var ctorDesc = Type.getMethodType(
-            Type.VOID_TYPE,
-            argTypes.toArray(Type[]::new)
-        ).getDescriptor();
+    private void codegenRunImplEhWrapper(LabelNode beginLabel, LabelNode endLabel) {
+        final var output = taskImplRun.instructions;
+        final var catcher = new LabelNode();
 
-        final var classNode = new ClassNode();
-        final var constructor = new MethodNode(0, "<init>", ctorDesc, null, null);
-        final var runImpl = new MethodNode(
-            ACC_PROTECTED,
-            Constants.BASIC_TASK_CLASS_COMPLETE_RUN,
-            Constants.BASIC_TASK_CLASS_COMPLETE_RUN_SIG,
-            null, null
-        );
+        output.add(catcher);
 
-        // setup class node
-        classNode.access = ACC_SUPER | ACC_SYNTHETIC;
-        classNode.name = generatedType;
-        classNode.outerClass = owner.name;
-        classNode.superName = Constants.BASIC_TASK_CLASS_BIN;
-        classNode.version = owner.version;
-        classNode.methods.add(runImpl);
-        classNode.methods.add(constructor);
-        classNode.sourceFile = owner.sourceFile;
-        classNode.outerMethod = runImpl.name;
-        classNode.nestHostClass = owner.name;
-        classNode.outerMethodDesc = runImpl.desc;
-        classNode.innerClasses.add(new InnerClassNode(generatedType, null, null, 0));
-        owner.innerClasses.add(new InnerClassNode(generatedType, null, null, 0));
-        if (owner.nestMembers == null) {
-            owner.nestMembers = new ArrayList<>();
-        }
-        owner.nestMembers.add(generatedType);
+        output.add(new VarInsnNode(ALOAD, LVT_THIS));
+        output.add(new InsnNode(SWAP));
+        output.add(BASIC_TASK_CLASS_COMPLETE_ERROR.instr(INVOKEVIRTUAL));
+        output.add(new InsnNode(RETURN));
 
-        // setup constructor preamble
-        constructor.instructions.add(new VarInsnNode(ALOAD, LVT_THIS));
-        constructor.instructions.add(new InsnNode(DUP));
-        constructor.instructions.add(new MethodInsnNode(
-            INVOKESPECIAL, Constants.BASIC_TASK_CLASS_BIN, "<init>", "()V"
-        ));
+        taskImplRun.tryCatchBlocks.add(new TryCatchBlockNode(beginLabel, endLabel, catcher, THROWABLE_CLASS_BIN));
+    }
 
-        // clear and setup coroutine method preamble
-        coMethod.instructions = new InsnList();
-        coMethod.instructions.add(new TypeInsnNode(NEW, generatedType));
-        coMethod.instructions.add(new InsnNode(DUP));
-
-        // setup index
-        int index = 0;
-        for (Type argType : argTypes) {
-            constructor.instructions.add(new InsnNode(DUP));
-            // need to add 1 because 0 is used
-            constructor.instructions.add(loadLocal(1 + index, argType));
-            constructor.instructions.add(argField(PUTFIELD, index, argType));
-
-            coMethod.instructions.add(loadLocal(index, argType));
-
-            classNode.fields.add(new FieldNode(
-                ACC_PRIVATE | ACC_SYNTHETIC, "arg" + index, argType.getDescriptor(), null, null
-            ));
-            index += argType.getSize();
+    private void codegenRunImplCopyLVT(LabelNode beginLabel, LabelNode endLabel) {
+        if (coMethod.localVariables == null) {
+            taskImplRun.localVariables = new ArrayList<>();
+        } else {
+            taskImplRun.localVariables = coMethod.localVariables.stream()
+                .map(old -> new LocalVariableNode(
+                    old.name,
+                    old.desc,
+                    old.signature,
+                    old.start,
+                    old.end,
+                    remapLVT(old.index)
+                ))
+                .collect(Collectors.toList());
         }
 
-        // finish constructor
-        constructor.instructions.add(new InsnNode(POP));
-        constructor.instructions.add(new InsnNode(RETURN));
-
-        // finish node methods
-        coMethod.instructions.add(new MethodInsnNode(
-            INVOKESPECIAL, generatedType, "<init>", ctorDesc
+        taskImplRun.localVariables.add(new LocalVariableNode(
+            "state",
+            Type.INT_TYPE.getDescriptor(),
+            null,
+            beginLabel,
+            endLabel,
+            LVT_STATE
         ));
-        coMethod.instructions.add(new InsnNode(ARETURN));
 
-        // implement run method
-        codegen(runImpl.instructions);
+        taskImplRun.localVariables.add(new LocalVariableNode(
+            "isException",
+            Type.BOOLEAN_TYPE.getDescriptor(),
+            null,
+            beginLabel,
+            endLabel,
+            LVT_IS_EXCEPTION
+        ));
 
-        // setup local storage pool
-        localStoragePool.forEach((type, integers) -> integers.forEach(i -> classNode.fields.add(new FieldNode(
-            ACC_PRIVATE | ACC_SYNTHETIC, "l" + i, type.getDescriptor(), null, null
+        taskImplRun.localVariables.add(new LocalVariableNode(
+            "resVal",
+            "L" + Constants.OBJECT_CLASS_BIN + ";",
+            null,
+            beginLabel,
+            endLabel,
+            LVT_RES_VAL
+        ));
+    }
+
+    private void codegenRunImpl() {
+        final var output = taskImplRun.instructions;
+
+        // generate preamble
+        final var entryLabel = new LabelNode();
+        resumeLabels.add(entryLabel);
+        output.add(entryLabel);
+
+        output.add(new VarInsnNode(ALOAD, LVT_THIS));
+
+        foreachArgTypes((index, argType) -> {
+            output.add(new InsnNode(DUP));
+            output.add(argField(GETFIELD, index, argType));
+            output.add(storeLocal(remapLVT(index), argType));
+        });
+
+        output.add(new InsnNode(POP));
+
+        // copy body
+        codegenRunImplCopyBody();
+
+        // generate the switch table
+        output.insert(new TableSwitchInsnNode(
+            0,
+            resumeLabels.size() - 1,
+            entryLabel,
+            resumeLabels.toArray(LabelNode[]::new)
+        ));
+        output.insert(new VarInsnNode(ILOAD, LVT_STATE));
+
+        withMethodBody(output, this::codegenRunImplCopyLVT);
+        withMethodBody(output, this::codegenRunImplEhWrapper);
+    }
+
+    private void codegenConstructor() {
+        final var output = taskImplClassCons.instructions;
+
+        output.add(new VarInsnNode(ALOAD, LVT_THIS));
+        output.add(new InsnNode(DUP));
+        output.add(new MethodInsnNode(
+            INVOKESPECIAL, BASIC_TASK_CLASS_BIN, "<init>", "()V"
+        ));
+
+        foreachArgTypes((index, argType) -> {
+            output.add(new InsnNode(DUP));
+            // need to add 1 because 0 is used as "this"
+            output.add(loadLocal(1 + index, argType));
+            output.add(argField(PUTFIELD, index, argType));
+        });
+
+        output.add(new InsnNode(POP));
+        output.add(new InsnNode(RETURN));
+    }
+
+    private void codegenCoMethod() {
+        final var output = new InsnList();
+        coMethod.instructions = output;
+
+        output.add(new TypeInsnNode(NEW, taskImplClassName));
+        output.add(new InsnNode(DUP));
+
+        foreachArgTypes((index, argType) -> coMethod.instructions.add(loadLocal(index, argType)));
+
+        output.add(new MethodInsnNode(INVOKESPECIAL, taskImplClassName, "<init>", consDesc));
+        output.add(new InsnNode(ARETURN));
+    }
+
+    private void codegenFields() {
+        final var access = ACC_PRIVATE;
+        final var fields = taskImplClass.fields;
+
+        foreachArgTypes((index, argType) -> fields.add(new FieldNode(
+            access, "arg" + index, argType.getDescriptor(), null, null
+        )));
+
+        localStoragePool.forEach((type, integers) -> integers.forEach(i -> fields.add(new FieldNode(
+            access, "l" + i, type.getDescriptor(), null, null
         ))));
+    }
 
-        return classNode;
+    private ClassNode codegen() {
+        codegenRunImpl();
+        codegenConstructor();
+        codegenCoMethod();
+        codegenFields();
+        return taskImplClass;
     }
 
     /**
      * Generates the coroutine implementation class for a coroutine method.
      *
-     * @param owner The owner of {@param node}
+     * @param owner The owner of {@code node}
      * @param node  The coroutine method to process.
      * @param id    The id of the coroutine in this method. Only exists to ensure generated class names are unique.
      * @return The coroutine implementation class.
      */
     public static ClassNode generate(ClassNode owner, MethodNode node, int id) {
-        final var outputName = String.format("%s$%s$Coro$%d", owner.name, node.name, id);
-        final var output = new MethodAnalysisContext(owner, node, outputName).generate();
+        final var output = new MethodAnalysisContext(owner, node, id).codegen();
 
         if (Boolean.getBoolean("coro.debug")) {
             TraceClassVisitor tcv = new TraceClassVisitor(new PrintWriter(System.out));
