@@ -1,0 +1,16 @@
+[versions]
+asm = "9.7.1"
+fastutil = "8.5.15"
+
+[libraries]
+
+asm = { module = "org.ow2.asm:asm", version.ref = "asm" }
+asm-analysis = { module = "org.ow2.asm:asm-analysis", version.ref = "asm" }
+asm-commons = { module = "org.ow2.asm:asm-commons", version.ref = "asm" }
+asm-tree = { module = "org.ow2.asm:asm-tree", version.ref = "asm" }
+asm-util = { module = "org.ow2.asm:asm-util", version.ref = "asm" }
+fastutil = { module = "it.unimi.dsi:fastutil", version.ref = "fastutil" }
+
+[bundles]
+
+asm = ["asm", "asm-analysis", "asm-commons", "asm-tree", "asm-util"]

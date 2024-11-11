@@ -1,8 +1,9 @@
 package com.floweytf.coro.internal;
 
-import com.floweytf.coro.support.Result;
+import com.floweytf.coro.concepts.Awaitable;
 import com.floweytf.coro.concepts.CoroutineExecutor;
 import com.floweytf.coro.concepts.Task;
+import com.floweytf.coro.support.Result;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
 import java.util.function.Consumer;
@@ -41,18 +42,25 @@ public abstract class BasicTask<T> implements Task<T> {
         } catch (NoSuchFieldException | IllegalAccessException e) {
             throw new RuntimeException(e);
         }
+    }
 
+    protected static <T, U> void suspendHelper(Awaitable<T> awaitable, BasicTask<U> self, int newState) {
+        awaitable.suspend(self.myExecutor, result -> {
+            self.myExecutor.executeTask(() -> {
+                self.run(newState, result.hasError(), result.mapBoth(x -> x, x -> x));
+            });
+        });
     }
 
     @Override
     public void begin(CoroutineExecutor executor) {
         // Need non-weak CAS here, since this absolutely cannot fail (no loop)
-        if (!MY_EXECUTOR.compareAndSet(this, executor, null)) {
+        if (!MY_EXECUTOR.compareAndSet(this, null, executor)) {
             // already started, don't need to worry about it anymore
             return;
         }
 
-        executor.executeTask(this::begin0);
+        executor.executeTask(() -> run(0, false, null));
     }
 
     @Override
@@ -81,7 +89,7 @@ public abstract class BasicTask<T> implements Task<T> {
             //   callback here
             // By doing compare and set, we can be sure that the head pointer has not changed at all between the get
             // operation and now. This doesn't suffer from the ABA problem, since every new entry is unique.
-            if (COMPLETE_STACK.weakCompareAndSet(head, newNode, head)) {
+            if (COMPLETE_STACK.weakCompareAndSet(this, head, newNode)) {
                 return;
             }
         }
@@ -91,7 +99,7 @@ public abstract class BasicTask<T> implements Task<T> {
     protected void complete(Result<T> result) {
         var oldResult = RESULT.getAndSet(this, result);
 
-        if (oldResult == null) {
+        if (oldResult != null) {
             return;
         }
 
@@ -106,5 +114,13 @@ public abstract class BasicTask<T> implements Task<T> {
         }
     }
 
-    protected abstract void begin0();
+    protected void completeSuccess(T val) {
+        complete(Result.value(val));
+    }
+
+    protected void completeError(Throwable val) {
+        complete(Result.error(val));
+    }
+
+    protected abstract void run(int state, boolean isExceptional, Object resVal);
 }

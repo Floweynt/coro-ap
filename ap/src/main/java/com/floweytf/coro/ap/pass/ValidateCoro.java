@@ -1,10 +1,18 @@
-package com.floweytf.coro.ap.impl;
+package com.floweytf.coro.ap.pass;
 
+import com.floweytf.coro.ap.Constants;
+import com.floweytf.coro.ap.CoroNames;
+import com.floweytf.coro.ap.CoroutineKind;
+import com.floweytf.coro.ap.Coroutines;
+import com.sun.source.util.TaskEvent;
 import com.sun.tools.javac.code.Flags;
 import com.sun.tools.javac.code.Symbol;
 import com.sun.tools.javac.code.Type;
 import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.tree.TreeScanner;
+import com.sun.tools.javac.util.DiagnosticSource;
+import com.sun.tools.javac.util.JCDiagnostic;
+import com.sun.tools.javac.util.Log;
 import com.sun.tools.javac.util.Name;
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -27,10 +35,24 @@ public class ValidateCoro extends TreeScanner {
     private final Deque<MethodContext> methodDeclContext = new ArrayDeque<>();
     private JCTree.JCReturn lastReturn = null;
 
-    private final CoroutineProcessorContext context;
+    private final Coroutines coroutines;
+    private final Log log;
+    private final CoroNames names;
+    private final JCDiagnostic.Factory diagFactory;
+    private final DiagnosticSource source;
 
-    public ValidateCoro(CoroutineProcessorContext context) {
-        this.context = context;
+    public ValidateCoro(Coroutines coroutines, TaskEvent event) {
+        this.coroutines = coroutines;
+        log = Log.instance(coroutines.getContext());
+        source = new DiagnosticSource(event.getSourceFile(), log);
+        diagFactory = JCDiagnostic.Factory.instance(coroutines.getContext());
+        names = coroutines.names();
+    }
+
+    private void reportError(JCDiagnostic.DiagnosticPosition pos, String message) {
+        log.report(diagFactory.error(
+            JCDiagnostic.DiagnosticFlag.SYNTAX, source, pos, Constants.DIAGNOSTIC_KEY, message
+        ));
     }
 
     private MethodContext currentContext() {
@@ -44,11 +66,7 @@ public class ValidateCoro extends TreeScanner {
     }
 
     private boolean typeMatch(Symbol symbol, Name name) {
-        if (symbol instanceof Symbol.ClassSymbol classSymbol) {
-            return classSymbol.fullname == name;
-        }
-
-        return false;
+        return symbol.flatName() == name;
     }
 
     private boolean typeMatch(Type type, Name name) {
@@ -64,7 +82,7 @@ public class ValidateCoro extends TreeScanner {
             return CoroutineKind.NONE;
         }
 
-        if (typeMatch(ident.type, context.getTaskClassName())) {
+        if (typeMatch(ident.type, names.taskClassName())) {
             return CoroutineKind.TASK;
         }
 
@@ -96,25 +114,25 @@ public class ValidateCoro extends TreeScanner {
     public void visitMethodDef(JCTree.JCMethodDecl tree) {
         final var coroAnnotation = tree.mods.annotations
             .stream()
-            .filter(ann -> typeMatch(ann.type, context.getCoroutineAnnotationName()))
+            .filter(ann -> typeMatch(ann.type, names.coroutineAnnotationName()))
             .findFirst();
 
         var kind = CoroutineKind.NONE;
 
         if (coroAnnotation.isPresent()) {
             if ((tree.mods.flags & Flags.SYNCHRONIZED) != 0) {
-                context.reportError(coroAnnotation.get(), "Coroutine methods cannot be synchronized");
+                reportError(coroAnnotation.get(), "Coroutine methods cannot be synchronized");
             }
 
             kind = getKindFromReturnType(tree.restype);
 
             if (kind == CoroutineKind.NONE) {
-                context.reportError(tree.restype, "Coroutine methods must return either Generator<T> or Task<T>");
+                reportError(tree.restype, "Coroutine methods must return either Generator<T> or Task<T>");
             }
         }
 
         if (kind != CoroutineKind.NONE) {
-            context.reportCoroutineMethod(tree);
+            coroutines.reportCoroutineMethod(tree);
         }
 
         methodDeclContext.push(new MethodContext(tree, kind));
@@ -122,49 +140,78 @@ public class ValidateCoro extends TreeScanner {
         methodDeclContext.pop();
     }
 
-    @Override
-    public void visitApply(JCTree.JCMethodInvocation tree) {
+    private Symbol getMethodSymbol(JCTree.JCExpression expression) {
         Symbol symbol = null;
-        if (tree.meth instanceof JCTree.JCIdent ident) {
+        if (expression instanceof JCTree.JCIdent ident) {
             symbol = ident.sym;
-        } else if (tree.meth instanceof JCTree.JCFieldAccess fieldAccess) {
+        } else if (expression instanceof JCTree.JCFieldAccess fieldAccess) {
             symbol = fieldAccess.sym;
         }
+        return symbol;
+    }
+
+    @Override
+    public void visitApply(JCTree.JCMethodInvocation tree) {
+        Symbol symbol = getMethodSymbol(tree.meth);
 
         if (symbol == null) {
             return;
         }
 
-        if (!typeMatch(symbol.owner, context.getCoClassName())) {
+        if (!typeMatch(symbol.owner, names.coClassName())) {
             return;
         }
 
         final var methodContext = currentContext();
 
         if (methodContext.kind == CoroutineKind.NONE) {
-            context.reportError(tree.meth, "Co.* keyword methods cannot be used outside of a Coroutine method");
+            reportError(tree.meth, "Co.* keyword methods cannot be used outside of a Coroutine method");
         }
 
-        if (symbol.name == context.getAwaitName()) {
+        if (symbol.name == names.awaitName()) {
             if (methodContext.syncBlockNest > 0) {
-                context.reportError(tree.meth, "Co.await() cannot be used in a synchronized block");
+                reportError(tree.meth, "Co.await() cannot be used in a synchronized block");
             }
-        } else if (symbol.name == context.getYieldName()) {
+        } else if (symbol.name == names.yieldName()) {
             if (methodContext.kind != CoroutineKind.GENERATOR) {
-                context.reportError(tree.meth, "Co.yield() must be used in a generator");
+                reportError(tree.meth, "Co.yield() must be used in a generator");
             }
-        } else if (symbol.name == context.getRetName()) {
+        } else if (symbol.name == names.retName()) {
             if (lastReturn == null || lastReturn.expr != tree) {
-                context.reportError(tree.meth, "Co.ret() cannot be used as a free method; it must be used as `return " +
+                reportError(tree.meth, "Co.ret() cannot be used as a free method; it must be used as `return " +
                     "Co.ret`");
             }
+        }
+    }
+
+    private void validateReturn(JCTree.JCReturn tree) {
+        if (currentContext().kind == CoroutineKind.NONE) {
+            return;
+        }
+        if (!(tree.expr instanceof JCTree.JCMethodInvocation invocation)) {
+            reportError(tree, "return is not allowed in Coroutine method; it must be used as `return Co.ret`");
+            return;
+        }
+
+        Symbol symbol = getMethodSymbol(invocation.meth);
+
+        if (symbol == null || !typeMatch(symbol.owner, names.coClassName()) || symbol.name != names.retName()) {
+            reportError(tree, "return is not allowed in Coroutine method; it must be used as `return Co.ret`");
         }
     }
 
     @Override
     public void visitReturn(JCTree.JCReturn tree) {
         lastReturn = tree;
+        validateReturn(tree);
         super.visitReturn(tree);
         lastReturn = null;
+    }
+
+    @Override
+    public void visitTry(JCTree.JCTry tree) {
+        if(tree.finalizer != null && currentContext().kind != CoroutineKind.NONE) {
+            reportError(tree, "finally {} not allowed in Coroutine method (yet) due to implementation constraints");
+        }
     }
 }

@@ -16,15 +16,10 @@ public class ReflectTool {
         private static volatile boolean staticThird;
     }
 
-    private static final Unsafe UNSAFE;
-    private static final long FIRST_FIELD_OFFSET;
-
     static {
         try {
             Field f = Unsafe.class.getDeclaredField("theUnsafe");
             f.setAccessible(true);
-            UNSAFE = (Unsafe) f.get(null);
-            FIRST_FIELD_OFFSET = UNSAFE.objectFieldOffset(Dummy.class.getDeclaredField("first"));
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -36,7 +31,7 @@ public class ReflectTool {
     }
 
     public static Method getMethod(@NotNull Class<?> clazz, @NotNull String mName,
-                                   @NotNull Class<?>... parameterTypes) throws NoSuchMethodException {
+                                   @NotNull Class<?>... parameterTypes)  {
         Method method = null;
         Class<?> original = clazz;
         while (clazz != null) {
@@ -49,13 +44,13 @@ public class ReflectTool {
         }
 
         if (method == null) {
-            throw new NoSuchMethodException(original.getName() + " :: " + mName + "(args)");
+            throw new RuntimeException(original.getName() + " :: " + mName + "(args)");
         }
 
         return setAccessible(method);
     }
 
-    public static Field getField(@NotNull Class<?> clazz, @NotNull String fName) throws NoSuchFieldException {
+    public static Field getField(@NotNull Class<?> clazz, @NotNull String fName) {
         Field field = null;
         Class<?> original = clazz;
         while (clazz != null) {
@@ -68,17 +63,9 @@ public class ReflectTool {
         }
 
         if (field == null) {
-            throw new NoSuchFieldException(original.getName() + " :: " + fName);
+            throw new RuntimeException(original.getName() + " :: " + fName);
         }
 
         return setAccessible(field);
-    }
-
-    public static Unsafe getUnsafe() {
-        return UNSAFE;
-    }
-
-    public static long getFirstFieldOffset() {
-        return FIRST_FIELD_OFFSET;
     }
 }

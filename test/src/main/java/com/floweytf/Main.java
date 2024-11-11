@@ -1,39 +1,112 @@
-
 package com.floweytf;
 
 import com.floweytf.coro.Co;
-import static com.floweytf.coro.Co.await;
 import com.floweytf.coro.annotations.Coroutine;
+import com.floweytf.coro.concepts.Awaitable;
 import com.floweytf.coro.concepts.Task;
-import java.util.function.Consumer;
+import com.floweytf.coro.support.Result;
 
 public class Main {
+    private static final Awaitable<Void> SWITCH_THREAD = (executor, resume) -> new Thread(
+        () -> resume.accept(Result.value(null)),
+        "hi"
+    ).start();
+
     @Coroutine
-    public synchronized static Task<Void> coroTest() {
+    public static Task<Void> test0() {
+        System.out.println("Hello from thread: " + Thread.currentThread().getName());
+        Co.await(SWITCH_THREAD);
+        System.out.println("Hello from thread: " + Thread.currentThread().getName());
+        return Co.ret();
+    }
 
-        Co.await(null);
+    @Coroutine
+    public static Task<Void> test1() {
+        int a = 0;
+        System.out.println("Hello from thread: " + Thread.currentThread().getName());
+        Co.await(SWITCH_THREAD);
+        System.out.println("Hello from thread: " + Thread.currentThread().getName());
+        System.out.println("Local variable: " + a);
+        return Co.ret();
+    }
 
-        new Consumer<>() {
+    @Coroutine
+    public static Task<Void> test2() {
+        int a = 0;
+        System.out.println("Hello from thread: " + Thread.currentThread().getName());
+        Co.await((executor, resume) -> new Thread(
+            () -> resume.accept(Result.value(null)),
+            "hi"
+        ).start());
+        System.out.println("Hello from thread: " + Thread.currentThread().getName());
+        System.out.println("Local variable: " + a);
+        return Co.ret();
+    }
 
-            @Override
-            public void accept(Object o) {
-                Co.await(null);
-            }
-        };
+    @Coroutine
+    public static Task<Void> test3() {
+        int a = 0;
+        System.out.println("Hello from thread: " + Thread.currentThread().getName());
+        Co.await(SWITCH_THREAD);
+        System.out.println("Hello from thread: " + Thread.currentThread().getName());
+        System.out.println("Local variable: " + a);
+        return Co.ret();
+    }
 
-        Consumer<String> z = s -> System.out.println(s);
+    @Coroutine
+    public static Task<Void> test4() {
+        int a = 0;
+        System.out.println("Hello from thread: " + Thread.currentThread().getName());
+        a++;
+        Co.await((executor, resume) -> new Thread(
+            () -> resume.accept(Result.value(null)),
+            "hi"
+        ).start());
+        System.out.println("Hello from thread: " + Thread.currentThread().getName());
+        System.out.println("Local variable: " + a);
+        return Co.ret();
+    }
 
-        await(null);
-        Co.ret();
+    @Coroutine
+    public static Task<Void> test5(int arg) {
+        int a = 0;
+        System.out.println("Hello from thread: " + Thread.currentThread().getName());
+        a++;
+        Co.await(SWITCH_THREAD);
+        System.out.println("Hello from thread: " + Thread.currentThread().getName());
+        System.out.println("Local variable: " + a);
+        System.out.println("Argument variable: " + arg);
+        return Co.ret();
+    }
+
+    @Coroutine
+    public static Task<Void> test6(int arg) {
+        for (int i = 0; i < arg; i++) {
+            System.out.println("Hello from thread: " + Thread.currentThread().getName());
+            int finalI = i;
+            Co.await((executor, resume) -> new Thread(
+                () -> resume.accept(Result.value(null)),
+                "hi " + finalI
+            ).start());
+            System.out.println("Hello from thread: " + Thread.currentThread().getName());
+        }
 
         return Co.ret();
     }
 
     @Coroutine
-    public synchronized static void coroTest2() {
+    public static Task<Void> runTests() {
+        Co.await(test0());
+        Co.await(test1());
+        Co.await(test2());
+        Co.await(test3());
+        Co.await(test4());
+        Co.await(test5(42));
+        Co.await(test6(10));
+        return Co.ret();
     }
 
     public static void main(String[] args) {
-        System.out.println("Hello world!" + coroTest());
+        runTests().begin();
     }
 }

@@ -1,4 +1,4 @@
-package com.floweytf.coro.ap.impl;
+package com.floweytf.coro.ap;
 
 public enum CoroutineKind {
     NONE,
