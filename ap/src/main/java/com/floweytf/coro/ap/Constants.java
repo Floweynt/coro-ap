@@ -1,5 +1,6 @@
 package com.floweytf.coro.ap;
 
+import static org.objectweb.asm.Opcodes.INVOKESPECIAL;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
@@ -89,5 +90,10 @@ public class Constants {
             "()L%s;",
             COROUTINE_EXECUTOR_CLASS_BIN
         )
+    );
+
+    public static final MethodDesc BASIC_TASK_CLASS_CONSTRUCTOR = new MethodDesc(
+        BASIC_TASK_CLASS_BIN,
+        "<init>", "()V"
     );
 }

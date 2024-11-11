@@ -6,6 +6,7 @@ import static com.floweytf.coro.ap.Constants.BASIC_TASK_CLASS_BIN;
 import static com.floweytf.coro.ap.Constants.BASIC_TASK_CLASS_COMPLETE_ERROR;
 import static com.floweytf.coro.ap.Constants.BASIC_TASK_CLASS_COMPLETE_RUN;
 import static com.floweytf.coro.ap.Constants.BASIC_TASK_CLASS_COMPLETE_SUCCESS;
+import static com.floweytf.coro.ap.Constants.BASIC_TASK_CLASS_CONSTRUCTOR;
 import static com.floweytf.coro.ap.Constants.BASIC_TASK_CLASS_GET_EXECUTOR;
 import static com.floweytf.coro.ap.Constants.BASIC_TASK_CLASS_SUSPEND;
 import static com.floweytf.coro.ap.Constants.CO_CLASS_BIN;
@@ -90,7 +91,8 @@ public class MethodAnalysisContext {
         this.coMethodOwner = owner;
         this.taskImplClassName = String.format("%s$%s$Coro$%d", owner.name, coMethod.name, id);
 
-        this.argTypes = Arrays.asList(Type.getMethodType(coMethod.desc).getArgumentTypes());
+        this.argTypes = new ArrayList<>(Arrays.asList(Type.getMethodType(coMethod.desc).getArgumentTypes()));
+
         if (!isStatic(coMethod)) {
             argTypes.add(0, Type.getType("L" + owner.name + ";"));
         }
@@ -121,27 +123,15 @@ public class MethodAnalysisContext {
         coMethodOwner.nestMembers.add(taskImplClassName);
     }
 
-    private Frame<BasicValue>[] analyze() {
+    private static Frame<BasicValue>[] analyze(ClassNode owner, MethodNode method) {
         try {
-            return new Analyzer<>(new BasicInterpreter()).analyze(coMethodOwner.name, coMethod);
+            return new Analyzer<>(new BasicInterpreter()).analyze(owner.name, method);
         } catch (AnalyzerException e) {
             throw new RuntimeException(e);
         }
     }
 
-    private int getOrAllocateFieldId(Type type, Object2IntMap<Type> map) {
-        final var index = map.getOrDefault(type, 0);
-        final var fields = localStoragePool.computeIfAbsent(type, ignored -> new IntArrayList());
-
-        if (fields.size() <= index) {
-            fields.add(allocFieldId++);
-        }
-
-        map.put(type, index + 1);
-        return fields.getInt(index);
-    }
-
-    private int remapLVT(int lvt) {
+    private static int remapLVT(int lvt) {
         return lvt + LVT_ARG_SIZE;
     }
 
@@ -155,6 +145,18 @@ public class MethodAnalysisContext {
 
     public static boolean isStatic(MethodNode node) {
         return (node.access & ACC_STATIC) != 0;
+    }
+
+    private int getOrAllocateFieldId(Type type, Object2IntMap<Type> map) {
+        final var index = map.getOrDefault(type, 0);
+        final var fields = localStoragePool.computeIfAbsent(type, ignored -> new IntArrayList());
+
+        if (fields.size() <= index) {
+            fields.add(allocFieldId++);
+        }
+
+        map.put(type, index + 1);
+        return fields.getInt(index);
     }
 
     private FieldInsnNode scratchField(int opc, int id, BasicValue value) {
@@ -307,7 +309,7 @@ public class MethodAnalysisContext {
 
     private void codegenRunImplCopyBody() {
         final var instructions = coMethod.instructions.toArray();
-        final Frame<BasicValue>[] frames = analyze();
+        final Frame<BasicValue>[] frames = analyze(coMethodOwner, coMethod);
         final var output = taskImplRun.instructions;
         final var labelCloner = new Object2ObjectOpenHashMap<LabelNode, LabelNode>() {
             @Override
@@ -474,9 +476,7 @@ public class MethodAnalysisContext {
 
         output.add(new VarInsnNode(ALOAD, LVT_THIS));
         output.add(new InsnNode(DUP));
-        output.add(new MethodInsnNode(
-            INVOKESPECIAL, BASIC_TASK_CLASS_BIN, "<init>", "()V"
-        ));
+        output.add(BASIC_TASK_CLASS_CONSTRUCTOR.instr(INVOKESPECIAL));
 
         foreachArgTypes((index, argType) -> {
             output.add(new InsnNode(DUP));
@@ -534,7 +534,7 @@ public class MethodAnalysisContext {
     public static ClassNode generate(ClassNode owner, MethodNode node, int id) {
         final var output = new MethodAnalysisContext(owner, node, id).codegen();
 
-        if (Boolean.getBoolean("coro.debug") || true) {
+        if (Boolean.getBoolean("coro.debug")) {
             TraceClassVisitor tcv = new TraceClassVisitor(new PrintWriter(System.out));
             output.accept(tcv);
         }

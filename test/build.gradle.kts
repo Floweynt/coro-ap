@@ -1,4 +1,4 @@
-group = "com.floweytf.coro.test"
+group = "com.floweytf.coro"
 
 repositories {
     mavenCentral()

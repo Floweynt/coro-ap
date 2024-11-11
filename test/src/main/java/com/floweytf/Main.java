@@ -5,6 +5,7 @@ import com.floweytf.coro.annotations.Coroutine;
 import com.floweytf.coro.concepts.Awaitable;
 import com.floweytf.coro.concepts.Task;
 import com.floweytf.coro.support.Result;
+import java.lang.reflect.Member;
 
 public class Main {
     private static final Awaitable<Void> SWITCH_THREAD = (executor, resume) -> new Thread(
@@ -121,17 +122,25 @@ public class Main {
         Co.await(test5(42));
         Co.await(test6(10));
         Co.await(test8());
+        Co.await(new Main().memberCo());
         Co.await(test7());
         System.out.println("shouldn't be printed");
         return Co.ret();
     }
 
+    @Coroutine
+    private Task<Void> memberCo() {
+        System.out.println("Hello from thread: " + Thread.currentThread().getName());
+        Co.await(SWITCH_THREAD);
+        System.out.println("Hello from thread: " + Thread.currentThread().getName());
+        System.out.println(this);
+        return Co.ret();
+    }
+
     public static void main(String[] args) {
-        runTests().begin().onComplete(x -> {
-            x.match(
-                unused -> System.out.println("Returned normally"),
-                throwable -> throwable.printStackTrace(System.out)
-            );
-        });
+        runTests().begin().onComplete(x -> x.match(
+            unused -> System.out.println("Returned normally"),
+            throwable -> throwable.printStackTrace(System.out)
+        ));
     }
 }

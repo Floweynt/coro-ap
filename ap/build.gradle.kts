@@ -1,5 +1,3 @@
-group = "com.floweytf.coro.ap"
-
 repositories {
     mavenCentral()
 }
