@@ -1,5 +1,6 @@
 package com.floweytf.coro.ap.pass;
 
+import com.sun.tools.javac.code.ClassFinder;
 import com.sun.tools.javac.code.Symbol;
 import com.sun.tools.javac.code.Symtab;
 import com.sun.tools.javac.code.Type;
@@ -12,23 +13,28 @@ public class TypeAnalysisContext {
     private final Names names;
     private final Symtab symtab;
     private final Types types;
+    private final ClassFinder classFinder;
 
     public TypeAnalysisContext(Symbol.ModuleSymbol moduleSymbol, Context context) {
         this.moduleSymbol = moduleSymbol;
-        this.names = Names.instance(context);
-        this.symtab = Symtab.instance(context);
-        this.types = Types.instance(context);
+        names = Names.instance(context);
+        symtab = Symtab.instance(context);
+        types = Types.instance(context);
+        classFinder = ClassFinder.instance(context);
     }
 
     public Type lookup(String name) {
-        return symtab.getClass(moduleSymbol, names.fromString(name)).type;
+        final var flatName = names.fromString(name);
+
+        final var res = symtab.getClass(moduleSymbol, flatName);
+        if(res != null) {
+            return res.type;
+        }
+
+        return classFinder.loadClass(moduleSymbol, flatName).type;
     }
 
     public boolean isAssignable(Type type, Type s) {
         return types.isAssignable(type, s);
-    }
-
-    public boolean isSubtype(Type type, Type s) {
-        return types.isSubtype(type, s);
     }
 }

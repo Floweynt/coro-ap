@@ -122,6 +122,20 @@ public class Main {
     }
 
     @Coroutine
+    public static Task<Void> testMergeImpl(boolean flag) {
+        Comparable cloneable;
+
+        if(flag) {
+            cloneable = "test";
+        } else {
+            cloneable = 5;
+        }
+
+        System.out.println(cloneable);
+        return Co.ret();
+    }
+
+    @Coroutine
     public static Task<Void> runTests() {
         Co.await(test0());
         Co.await(test1());

@@ -535,6 +535,7 @@ public class MethodTransformer {
 
         output.add(new MethodInsnNode(INVOKESPECIAL, taskImplClassName, "<init>", consDesc));
         output.add(new InsnNode(ARETURN));
+        coMethod.localVariables.clear();
     }
 
     private void codegenFields() {
