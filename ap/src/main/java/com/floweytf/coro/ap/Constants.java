@@ -1,6 +1,5 @@
 package com.floweytf.coro.ap;
 
-import static org.objectweb.asm.Opcodes.INVOKESPECIAL;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;

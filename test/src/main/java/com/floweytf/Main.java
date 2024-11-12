@@ -145,6 +145,8 @@ public class Main {
         Co.await(test4());
         Co.await(test5(42));
         Co.await(test6(10));
+        Co.await(testMergeImpl(true));
+        Co.await(testMergeImpl(false));
         Co.await(test10());
         Co.await(test8());
         Co.await(new Main().memberCo());

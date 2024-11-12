@@ -29,7 +29,7 @@ public class Main {
             "hi"
         ).start();
     };
-    
+
     @Coroutine
     private static Task<Void> coroTask() {
         System.out.println("Current thread: " + Thread.currentThread().getName());
@@ -37,7 +37,7 @@ public class Main {
         System.out.println("Current thread: " + Thread.currentThread().getName());
         return Co.ret();
     }
-    
+
     public static void main(String... args) {
         coroTask().begin();
     }
@@ -48,4 +48,4 @@ public class Main {
 ## Performance
 
 I have not benchmarked anything. Exception handling is not implemented efficiently, since each coroutine has
-a method-global catch statement to propagate exceptions. 
+a method-global catch statement to propagate exceptions.

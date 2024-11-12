@@ -1,7 +1,7 @@
 package com.floweytf.coro.ap.pass;
 
 import com.floweytf.coro.ap.Coroutines;
-import com.floweytf.coro.ap.util.JavacUtils;
+import com.floweytf.coro.ap.util.Util;
 import com.sun.tools.javac.code.Kinds;
 import com.sun.tools.javac.code.Symbol;
 import com.sun.tools.javac.code.Type;
@@ -84,7 +84,7 @@ public class TransformPass {
             if (writer.multiModuleMode) {
                 outLocation = fileManager.getLocationForModule(
                     StandardLocation.CLASS_OUTPUT,
-                    JavacUtils.getModule(symbol).name.toString()
+                    Util.getModule(symbol).name.toString()
                 );
             } else {
                 outLocation = StandardLocation.CLASS_OUTPUT;
@@ -128,9 +128,7 @@ public class TransformPass {
      * @throws IOException When underlying IO operations fail.
      */
     private void writeClass(ClassNode node, JavaFileObject file) throws IOException {
-        final var writer = new org.objectweb.asm.ClassWriter(
-            org.objectweb.asm.ClassWriter.COMPUTE_FRAMES | org.objectweb.asm.ClassWriter.COMPUTE_MAXS
-        );
+        final var writer = new org.objectweb.asm.ClassWriter(org.objectweb.asm.ClassWriter.COMPUTE_FRAMES);
 
         node.accept(writer);
 
@@ -156,7 +154,7 @@ public class TransformPass {
                 final var classNode = new ClassNode();
 
                 try (final var is = classFile.openInputStream()) {
-                    new ClassReader(is).accept(classNode, 0);
+                    new ClassReader(is).accept(classNode, ClassReader.EXPAND_FRAMES);
                 }
 
                 // construct signature array
@@ -168,11 +166,7 @@ public class TransformPass {
 
                 for (MethodNode method : classNode.methods) {
                     if (coroMethodSignatures.contains(method.name + method.desc)) {
-                        final var genClass = MethodTransformer.generate(
-                            classNode, method, matchCount,
-                            JavacUtils.getModule(classSymbol),
-                            context
-                        );
+                        final var genClass = MethodTransformer.generate(classNode, method, matchCount);
                         final var genOutput = getClassFileFor(classSymbol, genClass.name.replace('/', '.'));
                         writeClass(genClass, genOutput);
                         matchCount++;

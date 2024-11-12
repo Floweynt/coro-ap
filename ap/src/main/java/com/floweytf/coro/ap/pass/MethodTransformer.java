@@ -13,8 +13,7 @@ import static com.floweytf.coro.ap.Constants.CO_CLASS_BIN;
 import static com.floweytf.coro.ap.Constants.CURRENT_EXECUTOR_KW;
 import static com.floweytf.coro.ap.Constants.RET_KW;
 import static com.floweytf.coro.ap.Constants.THROWABLE_CLASS_BIN;
-import com.sun.tools.javac.code.Symbol;
-import com.sun.tools.javac.util.Context;
+import com.floweytf.coro.ap.util.Util;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntList;
 import it.unimi.dsi.fastutil.objects.Object2IntArrayMap;
@@ -27,19 +26,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
-import org.objectweb.asm.Opcodes;
 import static org.objectweb.asm.Opcodes.*;
 import org.objectweb.asm.Type;
-import static org.objectweb.asm.Type.ARRAY;
-import static org.objectweb.asm.Type.BOOLEAN;
-import static org.objectweb.asm.Type.BYTE;
-import static org.objectweb.asm.Type.CHAR;
-import static org.objectweb.asm.Type.DOUBLE;
-import static org.objectweb.asm.Type.FLOAT;
-import static org.objectweb.asm.Type.INT;
-import static org.objectweb.asm.Type.LONG;
-import static org.objectweb.asm.Type.OBJECT;
-import static org.objectweb.asm.Type.SHORT;
+import org.objectweb.asm.commons.AnalyzerAdapter;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FieldInsnNode;
@@ -58,11 +47,6 @@ import org.objectweb.asm.tree.TableSwitchInsnNode;
 import org.objectweb.asm.tree.TryCatchBlockNode;
 import org.objectweb.asm.tree.TypeInsnNode;
 import org.objectweb.asm.tree.VarInsnNode;
-import org.objectweb.asm.tree.analysis.Analyzer;
-import org.objectweb.asm.tree.analysis.AnalyzerException;
-import org.objectweb.asm.tree.analysis.BasicValue;
-import org.objectweb.asm.tree.analysis.Frame;
-import org.objectweb.asm.tree.analysis.SimpleVerifier;
 import org.objectweb.asm.util.TraceClassVisitor;
 
 public class MethodTransformer {
@@ -82,8 +66,6 @@ public class MethodTransformer {
     private final MethodNode taskImplClassCons;
     private final MethodNode taskImplRun;
 
-    private final TypeAnalysisContext context;
-
     private final List<Type> argTypes;
 
     private final List<LabelNode> resumeLabels = new ArrayList<>();
@@ -91,16 +73,16 @@ public class MethodTransformer {
     private final Map<Type, IntList> localStoragePool = new Object2ObjectOpenHashMap<>();
     private int allocFieldId = 0;
 
-    private MethodTransformer(ClassNode owner, MethodNode coMethod, int id, TypeAnalysisContext context) {
+    private MethodTransformer(ClassNode owner, MethodNode coMethod, int id) {
         this.coMethodOwner = owner;
-        this.context = context;
         this.taskImplClassName = String.format("%s$%s$Coro$%d", owner.name, coMethod.name, id);
 
         this.argTypes = new ArrayList<>(Arrays.asList(Type.getMethodType(coMethod.desc).getArgumentTypes()));
 
-        if (!isStatic(coMethod)) {
+        if (!Util.isStatic(coMethod)) {
             argTypes.add(0, Type.getType("L" + owner.name + ";"));
         }
+
         this.consDesc = Type.getMethodType(Type.VOID_TYPE, argTypes.toArray(Type[]::new)).getDescriptor();
 
         this.coMethod = coMethod;
@@ -128,40 +110,6 @@ public class MethodTransformer {
         coMethodOwner.nestMembers.add(taskImplClassName);
     }
 
-    private Frame<BasicValue>[] analyze(ClassNode owner, MethodNode method) {
-        try {
-            // TODO: we are using simple verifier for the sake of simplicity, but we should probably implement it
-            //  ourselves for performance reasons
-            return new Analyzer<>(new SimpleVerifier(
-                Opcodes.ASM9,
-                Type.getObjectType(owner.name),
-                Type.getObjectType(owner.superName),
-                owner.interfaces.stream().map(Type::getObjectType).toList(),
-                (owner.access & Opcodes.ACC_INTERFACE) != 0
-            ) {
-                @Override
-                protected boolean isAssignableFrom(Type s, Type type) {
-                    return context.isAssignable(
-                        context.lookup(type.getClassName()),
-                        context.lookup(s.getClassName())
-                    );
-                }
-
-                @Override
-                protected boolean isInterface(Type type) {
-                    return context.lookup(type.getClassName()).isInterface();
-                }
-
-                @Override
-                protected boolean isSubTypeOf(BasicValue value, BasicValue expected) {
-                    return true; // not important in type checking
-                }
-            }).analyze(owner.name, method);
-        } catch (AnalyzerException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
     private static int remapLVT(int lvt) {
         return lvt + LVT_ARG_SIZE;
     }
@@ -172,10 +120,6 @@ public class MethodTransformer {
         }
 
         return node.getOpcode() == INVOKESTATIC && methodInsnNode.owner.equals(CO_CLASS_BIN);
-    }
-
-    public static boolean isStatic(MethodNode node) {
-        return (node.access & ACC_STATIC) != 0;
     }
 
     private int getOrAllocateFieldId(Type type, Object2IntMap<Type> map) {
@@ -190,8 +134,8 @@ public class MethodTransformer {
         return fields.getInt(index);
     }
 
-    private FieldInsnNode scratchField(int opc, int id, BasicValue value) {
-        return new FieldInsnNode(opc, taskImplClassName, "l" + id, value.getType().getDescriptor());
+    private FieldInsnNode scratchField(int opc, int id, Type value) {
+        return new FieldInsnNode(opc, taskImplClassName, "l" + id, value.getDescriptor());
     }
 
     private FieldInsnNode argField(int opc, int id, Type type) {
@@ -201,37 +145,29 @@ public class MethodTransformer {
     private VarInsnNode loadLocal(int id, Type type) {
         return new VarInsnNode(
             switch (type.getSort()) {
-                case BOOLEAN, CHAR, BYTE, SHORT, INT -> ILOAD;
-                case FLOAT -> FLOAD;
-                case LONG -> LLOAD;
-                case DOUBLE -> DLOAD;
-                case ARRAY, OBJECT -> ALOAD;
+                case Type.BOOLEAN, Type.CHAR, Type.BYTE, Type.SHORT, Type.INT -> ILOAD;
+                case Type.FLOAT -> FLOAD;
+                case Type.LONG -> LLOAD;
+                case Type.DOUBLE -> DLOAD;
+                case Type.ARRAY, Type.OBJECT -> ALOAD;
                 default -> throw new AssertionError();
             },
             id
         );
-    }
-
-    private VarInsnNode loadLocal(int id, BasicValue value) {
-        return loadLocal(id, value.getType());
     }
 
     private VarInsnNode storeLocal(int id, Type type) {
         return new VarInsnNode(
             switch (type.getSort()) {
-                case BOOLEAN, CHAR, BYTE, SHORT, INT -> ISTORE;
-                case FLOAT -> FSTORE;
-                case LONG -> LSTORE;
-                case DOUBLE -> DSTORE;
-                case ARRAY, OBJECT -> ASTORE;
+                case Type.BOOLEAN, Type.CHAR, Type.BYTE, Type.SHORT, Type.INT -> ISTORE;
+                case Type.FLOAT -> FSTORE;
+                case Type.LONG -> LSTORE;
+                case Type.DOUBLE -> DSTORE;
+                case Type.ARRAY, Type.OBJECT -> ASTORE;
                 default -> throw new AssertionError();
             },
             id
         );
-    }
-
-    private VarInsnNode storeLocal(int id, BasicValue value) {
-        return storeLocal(id, value.getType());
     }
 
     private void foreachArgTypes(BiConsumer<Integer, Type> handler) {
@@ -252,58 +188,64 @@ public class MethodTransformer {
         handler.accept(startLabel, endLabel);
     }
 
-    private Runnable codegenSuspendLocals(Frame<BasicValue> frame, Object2IntMap<Type> allocMap) {
+    private Runnable codegenSuspendLocals(AnalyzerAdapter frame, Object2IntMap<Type> allocMap) {
         final var output = taskImplRun.instructions;
-
-        var localIndex = 0;
         final var resumeInstr = new InsnList();
 
         output.add(new VarInsnNode(ALOAD, LVT_THIS));
         resumeInstr.add(new VarInsnNode(ALOAD, LVT_THIS));
-        while (localIndex < frame.getLocals()) {
-            final var local = frame.getLocal(localIndex);
-            if (local.getType() != null) {
-                final var fieldNum = getOrAllocateFieldId(local.getType(), allocMap);
+
+        Util.forEachLocal(frame, (localIndex, type, isInit) -> {
+            if (type != null) {
+                final var fieldNum = getOrAllocateFieldId(type, allocMap);
 
                 output.add(new InsnNode(DUP));
-                output.add(loadLocal(remapLVT(localIndex), local));
-                output.add(scratchField(PUTFIELD, fieldNum, local));
+                output.add(loadLocal(remapLVT(localIndex), type));
+                output.add(scratchField(PUTFIELD, fieldNum, type));
 
                 resumeInstr.add(new InsnNode(DUP));
-                resumeInstr.add(scratchField(GETFIELD, fieldNum, local));
-                resumeInstr.add(storeLocal(remapLVT(localIndex), local));
+                resumeInstr.add(scratchField(GETFIELD, fieldNum, type));
+                resumeInstr.add(storeLocal(remapLVT(localIndex), type));
+            } else {
+                output.add(new InsnNode(POP));
+                resumeInstr.add(new InsnNode(ACONST_NULL));
+                resumeInstr.add(new VarInsnNode(ASTORE, remapLVT(localIndex)));
             }
+        });
 
-            localIndex += local.getSize();
-        }
         output.add(new InsnNode(POP));
         resumeInstr.add(new InsnNode(POP));
 
         return () -> output.add(resumeInstr);
     }
 
-    private Runnable codegenSuspendStack(Frame<BasicValue> frame, Object2IntMap<Type> allocMap) {
+    private Runnable codegenSuspendStack(AnalyzerAdapter frame, Object2IntMap<Type> allocMap) {
         final var resumeReversed = new ArrayList<AbstractInsnNode>();
         final var output = taskImplRun.instructions;
 
-        if (frame.getStackSize() > 1) {
+        if (frame.stack.size() > 1) {
             output.add(new VarInsnNode(ASTORE, LVT_SCRATCH_SMALL));
-            for (int j = frame.getStackSize() - 2; j >= 0; j--) {
-                final var stack = frame.getStack(j);
-                final var fieldId = getOrAllocateFieldId(stack.getType(), allocMap);
-                output.add(new VarInsnNode(ALOAD, LVT_THIS));
-                if (stack.getType().getSize() == 2) {
-                    output.add(new InsnNode(DUP_X2));
+            Util.forEachStack(frame, 1, (type, isInit) -> {
+                if (type == null) {
+                    output.add(new InsnNode(POP));
+                    resumeReversed.add(new InsnNode(ACONST_NULL));
                 } else {
-                    output.add(new InsnNode(DUP_X1));
-                }
-                output.add(new InsnNode(POP));
-                output.add(scratchField(PUTFIELD, fieldId, stack));
+                    final var fieldId = getOrAllocateFieldId(type, allocMap);
+                    output.add(new VarInsnNode(ALOAD, LVT_THIS));
+                    if (type.getSize() == 2) {
+                        output.add(new InsnNode(DUP_X2));
+                    } else {
+                        output.add(new InsnNode(DUP_X1));
+                    }
+                    output.add(new InsnNode(POP));
+                    output.add(scratchField(PUTFIELD, fieldId, type));
 
-                // reverse order
-                resumeReversed.add(scratchField(GETFIELD, fieldId, stack));
-                resumeReversed.add(new VarInsnNode(ALOAD, LVT_THIS));
-            }
+                    // reverse order
+                    resumeReversed.add(scratchField(GETFIELD, fieldId, type));
+                    resumeReversed.add(new VarInsnNode(ALOAD, LVT_THIS));
+                }
+            });
+
             output.add(new VarInsnNode(ALOAD, LVT_SCRATCH_SMALL));
         }
 
@@ -314,7 +256,7 @@ public class MethodTransformer {
         };
     }
 
-    private void codegenSuspend(InsnList output, Frame<BasicValue> frame) {
+    private void codegenSuspend(InsnList output, AnalyzerAdapter frame) {
         final var allocMap = new Object2IntArrayMap<Type>();
         final var resumeLabel = new LabelNode();
 
@@ -342,30 +284,16 @@ public class MethodTransformer {
         resumeLabels.add(resumeLabel);
     }
 
-    private void codegenRunImplCopyBody() {
+    private void codegenRunImplCopyBody(Map<LabelNode, LabelNode> labelCloner) {
         final var instructions = coMethod.instructions.toArray();
-        final Frame<BasicValue>[] frames = analyze(coMethodOwner, coMethod);
         final var output = taskImplRun.instructions;
-        final var labelCloner = new Object2ObjectOpenHashMap<LabelNode, LabelNode>() {
-            @Override
-            public LabelNode get(Object k) {
-                var res = super.get(k);
-                if (res == null) {
-                    res = new LabelNode();
-                    put((LabelNode) k, res);
-                }
-                return res;
-            }
-        };
+
+        var analyzer = new AnalyzerAdapter(coMethodOwner.name, coMethod.access, coMethod.name, coMethod.desc, null);
 
         // process main instruction
         for (int i = 0; i < instructions.length; i++) {
             final var instruction = instructions[i];
-            final var frame = frames[i];
 
-            // we need to remap the LVT, since we promote the args of the coroutine method to fields
-            // we also need to remap individual lvt entries, since it maybe shifted because run() takes 4 (this + 3)
-            // args
             if (instruction instanceof VarInsnNode varInstNode) {
                 output.add(new VarInsnNode(varInstNode.getOpcode(), remapLVT(varInstNode.var)));
             } else if (instruction instanceof IincInsnNode iincInsnNode) {
@@ -373,7 +301,7 @@ public class MethodTransformer {
             } else if (isCoMethod(instruction)) {
                 final var methodInstr = (MethodInsnNode) instruction;
                 switch (methodInstr.name) {
-                case AWAIT_KW -> codegenSuspend(output, frame);
+                case AWAIT_KW -> codegenSuspend(output, analyzer);
                 case RET_KW -> {
                     if (i + 1 >= instructions.length || instructions[i + 1].getOpcode() != ARETURN) {
                         throw new AssertionError();
@@ -402,15 +330,24 @@ public class MethodTransformer {
                 // copy over the instruction
                 output.add(instruction.clone(labelCloner));
             }
+
+            instruction.accept(analyzer);
         }
 
         // TODO: clone annotations
-        coMethod.tryCatchBlocks.stream().map(block -> new TryCatchBlockNode(
-            labelCloner.get(block.start),
-            labelCloner.get(block.end),
-            labelCloner.get(block.handler),
-            block.type
-        )).forEach(taskImplRun.tryCatchBlocks::add);
+        coMethod.tryCatchBlocks.stream().
+
+            map(block -> new
+
+                TryCatchBlockNode(
+                labelCloner.get(block.start),
+                labelCloner.get(block.end),
+                labelCloner.get(block.handler),
+                block.type
+            )).
+
+            forEach(taskImplRun.tryCatchBlocks::add);
+
         coMethod.tryCatchBlocks = new ArrayList<>();
     }
 
@@ -428,7 +365,7 @@ public class MethodTransformer {
         taskImplRun.tryCatchBlocks.add(new TryCatchBlockNode(beginLabel, endLabel, catcher, THROWABLE_CLASS_BIN));
     }
 
-    private void codegenRunImplCopyLVT(LabelNode beginLabel, LabelNode endLabel) {
+    private void codegenRunImplCopyLVT(LabelNode beginLabel, LabelNode endLabel, Map<LabelNode, LabelNode> mapper) {
         if (coMethod.localVariables == null) {
             taskImplRun.localVariables = new ArrayList<>();
         } else {
@@ -437,12 +374,15 @@ public class MethodTransformer {
                     old.name,
                     old.desc,
                     old.signature,
-                    old.start,
-                    old.end,
+                    mapper.get(old.start),
+                    mapper.get(old.end),
                     remapLVT(old.index)
                 ))
                 .collect(Collectors.toList());
         }
+
+
+        System.out.println(coMethod.localVariables);
 
         taskImplRun.localVariables.add(new LocalVariableNode(
             "state",
@@ -474,6 +414,17 @@ public class MethodTransformer {
 
     private void codegenRunImpl() {
         final var output = taskImplRun.instructions;
+        final var labelCloner = new Object2ObjectOpenHashMap<LabelNode, LabelNode>() {
+            @Override
+            public LabelNode get(Object k) {
+                var res = super.get(k);
+                if (res == null) {
+                    res = new LabelNode();
+                    put((LabelNode) k, res);
+                }
+                return res;
+            }
+        };
 
         // generate preamble
         final var entryLabel = new LabelNode();
@@ -491,7 +442,7 @@ public class MethodTransformer {
         output.add(new InsnNode(POP));
 
         // copy body
-        codegenRunImplCopyBody();
+        codegenRunImplCopyBody(labelCloner);
 
         // generate the switch table
         output.insert(new TableSwitchInsnNode(
@@ -502,7 +453,7 @@ public class MethodTransformer {
         ));
         output.insert(new VarInsnNode(ILOAD, LVT_STATE));
 
-        withMethodBody(output, this::codegenRunImplCopyLVT);
+        withMethodBody(output, (start, end) -> codegenRunImplCopyLVT(start, end, labelCloner));
         withMethodBody(output, this::codegenRunImplEhWrapper);
     }
 
@@ -559,9 +510,8 @@ public class MethodTransformer {
         return taskImplClass;
     }
 
-    public static ClassNode generate(ClassNode owner, MethodNode node, int id, Symbol.ModuleSymbol module,
-                                     Context context) {
-        final var output = new MethodTransformer(owner, node, id, new TypeAnalysisContext(module, context)).codegen();
+    public static ClassNode generate(ClassNode owner, MethodNode node, int id) {
+        final var output = new MethodTransformer(owner, node, id).codegen();
 
         if (Boolean.getBoolean("coro.debug")) {
             TraceClassVisitor tcv = new TraceClassVisitor(new PrintWriter(System.out));

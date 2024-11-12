@@ -1,6 +1,6 @@
 package com.floweytf.coro.ap.entry;
 
-import com.floweytf.coro.ap.util.ReflectTool;
+import com.floweytf.coro.ap.util.Util;
 import com.sun.source.util.JavacTask;
 import com.sun.source.util.Plugin;
 import java.util.List;
@@ -32,7 +32,7 @@ public class PluginImpl implements Plugin {
         final var ownModule = PluginImpl.class.getModule();
 
         try {
-            final var m = ReflectTool.getMethod(Module.class, "implAddOpens", String.class, Module.class);
+            final var m = Util.getMethod(Module.class, "implAddOpens", String.class, Module.class);
             for (final var p : MODULES) {
                 m.invoke(jdkCompilerModule, "com.sun.tools.javac." + p, ownModule);
             }
