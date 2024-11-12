@@ -18,7 +18,7 @@ import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.Objects;
 
-public class ValidateCoro extends TreeScanner {
+public class ValidatePass extends TreeScanner {
     private static class MethodContext {
         private final JCTree.JCMethodDecl method;
         private final CoroutineKind kind;
@@ -41,12 +41,12 @@ public class ValidateCoro extends TreeScanner {
     private final JCDiagnostic.Factory diagFactory;
     private final DiagnosticSource source;
 
-    public ValidateCoro(Coroutines coroutines, TaskEvent event) {
+    public ValidatePass(Coroutines coroutines, TaskEvent event) {
         this.coroutines = coroutines;
         log = Log.instance(coroutines.getContext());
         source = new DiagnosticSource(event.getSourceFile(), log);
         diagFactory = JCDiagnostic.Factory.instance(coroutines.getContext());
-        names = coroutines.names();
+        names = coroutines.coroNames();
     }
 
     private void reportError(JCDiagnostic.DiagnosticPosition pos, String message) {

@@ -5,7 +5,6 @@ import com.floweytf.coro.annotations.Coroutine;
 import com.floweytf.coro.concepts.Awaitable;
 import com.floweytf.coro.concepts.Task;
 import com.floweytf.coro.support.Result;
-import java.lang.reflect.Member;
 
 public class Main {
     private static final Awaitable<Void> SWITCH_THREAD = (executor, resume) -> new Thread(
@@ -112,6 +111,17 @@ public class Main {
     }
 
     @Coroutine
+    public static Task<Integer> test9() {
+        return Co.ret(9);
+    }
+
+    @Coroutine
+    public static Task<Void> test10() {
+        System.out.println(Co.await(test9()));
+        return Co.ret();
+    }
+
+    @Coroutine
     public static Task<Void> runTests() {
         Co.await(test0());
         Co.await(test1());
@@ -121,10 +131,15 @@ public class Main {
         Co.await(test4());
         Co.await(test5(42));
         Co.await(test6(10));
+        Co.await(test10());
         Co.await(test8());
         Co.await(new Main().memberCo());
-        Co.await(test7());
-        System.out.println("shouldn't be printed");
+        try {
+            Co.await(test7());
+        } finally {
+            System.out.println("finally");
+        }
+
         return Co.ret();
     }
 

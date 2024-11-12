@@ -1,7 +1,7 @@
 package com.floweytf.coro.ap;
 
-import com.floweytf.coro.ap.pass.CoroutineTransformer;
-import com.floweytf.coro.ap.pass.ValidateCoro;
+import com.floweytf.coro.ap.pass.TransformPass;
+import com.floweytf.coro.ap.pass.ValidatePass;
 import com.sun.source.util.TaskEvent;
 import com.sun.source.util.TaskListener;
 import com.sun.tools.javac.code.Symbol;
@@ -20,13 +20,13 @@ import org.jetbrains.annotations.NotNull;
 
 public class Coroutines implements TaskListener {
     private final Context context;
-    private final CoroNames names;
+    private final CoroNames coroNames;
 
     private final Map<Symbol, List<JCTree.JCMethodDecl>> coroutineMethods = new IdentityHashMap<>();
 
     public Coroutines(Context context) {
         this.context = context;
-        names = new CoroNames(Names.instance(context));
+        coroNames = new CoroNames(Names.instance(context));
 
         JavacMessages.instance(context).add(locale -> new ResourceBundle() {
             @Override
@@ -41,10 +41,6 @@ public class Coroutines implements TaskListener {
         });
     }
 
-    public CoroNames names() {
-        return names;
-    }
-
     public void reportCoroutineMethod(JCTree.JCMethodDecl decl) {
         coroutineMethods.computeIfAbsent(decl.sym.owner, x -> new ArrayList<>()).add(decl);
     }
@@ -52,12 +48,16 @@ public class Coroutines implements TaskListener {
     @Override
     public void finished(TaskEvent event) {
         switch (event.getKind()) {
-        case ANALYZE -> ((JCTree.JCCompilationUnit) event.getCompilationUnit()).accept(new ValidateCoro(this, event));
-        case COMPILATION -> new CoroutineTransformer(this).process(coroutineMethods);
+        case ANALYZE -> ((JCTree.JCCompilationUnit) event.getCompilationUnit()).accept(new ValidatePass(this, event));
+        case COMPILATION -> new TransformPass(this).process(coroutineMethods, context);
         }
     }
 
     public Context getContext() {
         return context;
+    }
+
+    public CoroNames coroNames() {
+        return coroNames;
     }
 }

@@ -1,6 +1,7 @@
 package com.floweytf.coro.ap.pass;
 
 import com.floweytf.coro.ap.Coroutines;
+import com.floweytf.coro.ap.util.JavacUtils;
 import com.sun.tools.javac.code.Kinds;
 import com.sun.tools.javac.code.Symbol;
 import com.sun.tools.javac.code.Type;
@@ -8,6 +9,7 @@ import com.sun.tools.javac.code.Types;
 import com.sun.tools.javac.jvm.ClassWriter;
 import com.sun.tools.javac.main.JavaCompiler;
 import com.sun.tools.javac.tree.JCTree;
+import com.sun.tools.javac.util.Context;
 import com.sun.tools.javac.util.Name;
 import java.io.IOException;
 import java.util.List;
@@ -20,7 +22,7 @@ import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.MethodNode;
 
-public class CoroutineTransformer {
+public class TransformPass {
     private static class SigGenerator extends Types.SignatureGenerator {
         private final StringBuilder sb = new StringBuilder();
 
@@ -47,7 +49,7 @@ public class CoroutineTransformer {
     private final SigGenerator sigGenerator;
     private final Types types;
 
-    public CoroutineTransformer(Coroutines coroutines) {
+    public TransformPass(Coroutines coroutines) {
         isCompileTask = !JavaCompiler.instance(coroutines.getContext()).sourceOutput;
         fileManager = coroutines.getContext().get(JavaFileManager.class);
         writer = ClassWriter.instance(coroutines.getContext());
@@ -71,7 +73,7 @@ public class CoroutineTransformer {
      * {@link ClassWriter#writeClass(Symbol.ClassSymbol)}, and should be kept up-to-date.
      *
      * @param symbol The class.
-     * @param name   The name of the class. This should be {@link CoroutineTransformer#getClassName}, but may be
+     * @param name   The name of the class. This should be {@link TransformPass#getClassName}, but may be
      *               replaced with an inner class when emitting generated classes.
      * @return The file object representing the output file.
      */
@@ -80,13 +82,9 @@ public class CoroutineTransformer {
             JavaFileManager.Location outLocation;
 
             if (writer.multiModuleMode) {
-                final var moduleSymbol = symbol.owner.kind == Kinds.Kind.MDL ?
-                    (Symbol.ModuleSymbol) symbol.owner :
-                    symbol.packge().modle;
-
                 outLocation = fileManager.getLocationForModule(
                     StandardLocation.CLASS_OUTPUT,
-                    moduleSymbol.name.toString()
+                    JavacUtils.getModule(symbol).name.toString()
                 );
             } else {
                 outLocation = StandardLocation.CLASS_OUTPUT;
@@ -141,13 +139,7 @@ public class CoroutineTransformer {
         }
     }
 
-    /**
-     * Process all coroutine methods.
-     *
-     * @param coroutineMethods All coroutine methods that were gathered during the {@link ValidateCoro} phase. Should
-     *                         be a map of owner -> list of coroutine methods in that class.
-     */
-    public void process(Map<Symbol, List<JCTree.JCMethodDecl>> coroutineMethods) {
+    public void process(Map<Symbol, List<JCTree.JCMethodDecl>> coroutineMethods, Context context) {
         // We don't care if this is a gen sources or gen javadoc task.
         if (!isCompileTask) {
             return;
@@ -176,7 +168,11 @@ public class CoroutineTransformer {
 
                 for (MethodNode method : classNode.methods) {
                     if (coroMethodSignatures.contains(method.name + method.desc)) {
-                        final var genClass = MethodAnalysisContext.generate(classNode, method, matchCount);
+                        final var genClass = MethodTransformer.generate(
+                            classNode, method, matchCount,
+                            JavacUtils.getModule(classSymbol),
+                            context
+                        );
                         final var genOutput = getClassFileFor(classSymbol, genClass.name.replace('/', '.'));
                         writeClass(genClass, genOutput);
                         matchCount++;

@@ -13,6 +13,8 @@ import static com.floweytf.coro.ap.Constants.CO_CLASS_BIN;
 import static com.floweytf.coro.ap.Constants.CURRENT_EXECUTOR_KW;
 import static com.floweytf.coro.ap.Constants.RET_KW;
 import static com.floweytf.coro.ap.Constants.THROWABLE_CLASS_BIN;
+import com.sun.tools.javac.code.Symbol;
+import com.sun.tools.javac.util.Context;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntList;
 import it.unimi.dsi.fastutil.objects.Object2IntArrayMap;
@@ -25,6 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
+import org.objectweb.asm.Opcodes;
 import static org.objectweb.asm.Opcodes.*;
 import org.objectweb.asm.Type;
 import static org.objectweb.asm.Type.ARRAY;
@@ -57,12 +60,12 @@ import org.objectweb.asm.tree.TypeInsnNode;
 import org.objectweb.asm.tree.VarInsnNode;
 import org.objectweb.asm.tree.analysis.Analyzer;
 import org.objectweb.asm.tree.analysis.AnalyzerException;
-import org.objectweb.asm.tree.analysis.BasicInterpreter;
 import org.objectweb.asm.tree.analysis.BasicValue;
 import org.objectweb.asm.tree.analysis.Frame;
+import org.objectweb.asm.tree.analysis.SimpleVerifier;
 import org.objectweb.asm.util.TraceClassVisitor;
 
-public class MethodAnalysisContext {
+public class MethodTransformer {
     private static final int LVT_THIS = 0;
     private static final int LVT_STATE = 1;
     private static final int LVT_IS_EXCEPTION = 2;
@@ -79,6 +82,8 @@ public class MethodAnalysisContext {
     private final MethodNode taskImplClassCons;
     private final MethodNode taskImplRun;
 
+    private final TypeAnalysisContext context;
+
     private final List<Type> argTypes;
 
     private final List<LabelNode> resumeLabels = new ArrayList<>();
@@ -86,8 +91,9 @@ public class MethodAnalysisContext {
     private final Map<Type, IntList> localStoragePool = new Object2ObjectOpenHashMap<>();
     private int allocFieldId = 0;
 
-    private MethodAnalysisContext(ClassNode owner, MethodNode coMethod, int id) {
+    private MethodTransformer(ClassNode owner, MethodNode coMethod, int id, TypeAnalysisContext context) {
         this.coMethodOwner = owner;
+        this.context = context;
         this.taskImplClassName = String.format("%s$%s$Coro$%d", owner.name, coMethod.name, id);
 
         this.argTypes = new ArrayList<>(Arrays.asList(Type.getMethodType(coMethod.desc).getArgumentTypes()));
@@ -122,9 +128,35 @@ public class MethodAnalysisContext {
         coMethodOwner.nestMembers.add(taskImplClassName);
     }
 
-    private static Frame<BasicValue>[] analyze(ClassNode owner, MethodNode method) {
+    private Frame<BasicValue>[] analyze(ClassNode owner, MethodNode method) {
         try {
-            return new Analyzer<>(new BasicInterpreter()).analyze(owner.name, method);
+            // TODO: we are using simple verifier for the sake of simplicity, but we should probably implement it
+            //  ourselves for performance reasons
+            return new Analyzer<>(new SimpleVerifier(
+                Opcodes.ASM9,
+                Type.getObjectType(owner.name),
+                Type.getObjectType(owner.superName),
+                owner.interfaces.stream().map(Type::getObjectType).toList(),
+                (owner.access & Opcodes.ACC_INTERFACE) != 0
+            ) {
+                @Override
+                protected boolean isAssignableFrom(Type s, Type type) {
+                    return context.isAssignable(
+                        context.lookup(type.getClassName()),
+                        context.lookup(s.getClassName())
+                    );
+                }
+
+                @Override
+                protected boolean isInterface(Type type) {
+                    return context.lookup(type.getClassName()).isInterface();
+                }
+
+                @Override
+                protected boolean isSubTypeOf(BasicValue value, BasicValue expected) {
+                    return true; // not important in type checking
+                }
+            }).analyze(owner.name, method);
         } catch (AnalyzerException e) {
             throw new RuntimeException(e);
         }
@@ -260,7 +292,7 @@ public class MethodAnalysisContext {
                 final var stack = frame.getStack(j);
                 final var fieldId = getOrAllocateFieldId(stack.getType(), allocMap);
                 output.add(new VarInsnNode(ALOAD, LVT_THIS));
-                if(stack.getType().getSize() == 2) {
+                if (stack.getType().getSize() == 2) {
                     output.add(new InsnNode(DUP_X2));
                 } else {
                     output.add(new InsnNode(DUP_X1));
@@ -526,16 +558,9 @@ public class MethodAnalysisContext {
         return taskImplClass;
     }
 
-    /**
-     * Generates the coroutine implementation class for a coroutine method.
-     *
-     * @param owner The owner of {@code node}
-     * @param node  The coroutine method to process.
-     * @param id    The id of the coroutine in this method. Only exists to ensure generated class names are unique.
-     * @return The coroutine implementation class.
-     */
-    public static ClassNode generate(ClassNode owner, MethodNode node, int id) {
-        final var output = new MethodAnalysisContext(owner, node, id).codegen();
+    public static ClassNode generate(ClassNode owner, MethodNode node, int id, Symbol.ModuleSymbol module,
+                                     Context context) {
+        final var output = new MethodTransformer(owner, node, id, new TypeAnalysisContext(module, context)).codegen();
 
         if (Boolean.getBoolean("coro.debug")) {
             TraceClassVisitor tcv = new TraceClassVisitor(new PrintWriter(System.out));
