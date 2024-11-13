@@ -5,6 +5,7 @@ import com.floweytf.coro.annotations.Coroutine;
 import com.floweytf.coro.concepts.Awaitable;
 import com.floweytf.coro.concepts.Task;
 import com.floweytf.coro.support.Result;
+import java.util.function.Consumer;
 
 public class Main {
     private static final Awaitable<Void> SWITCH_THREAD = (executor, resume) -> new Thread(
@@ -123,15 +124,15 @@ public class Main {
 
     @Coroutine
     public static Task<Void> testMergeImpl(boolean flag) {
-        Comparable cloneable;
+        Comparable test;
 
         if(flag) {
-            cloneable = "test";
+            test = "test";
         } else {
-            cloneable = 5;
+            test = Co.await(test9());
         }
 
-        System.out.println(cloneable);
+        System.out.println(test);
         return Co.ret();
     }
 
