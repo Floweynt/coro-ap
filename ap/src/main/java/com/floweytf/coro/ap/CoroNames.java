@@ -7,18 +7,22 @@ public record CoroNames(
     Name coroutineAnnotationName,
     Name coClassName,
     Name taskClassName,
+    Name generatorClassName,
     Name awaitName,
     Name yieldName,
-    Name retName
+    Name retName,
+    Name currentExecutorName
 ) {
     CoroNames(Names names) {
         this(
             names.fromString(Constants.COROUTINE_ANN),
             names.fromString(Constants.CO_CLASS),
             names.fromString(Constants.TASK_CLASS),
+            names.fromString(Constants.GENERATOR_CLASS),
             names.fromString(Constants.AWAIT_KW),
             names.fromString(Constants.YIELD_KW),
-            names.fromString(Constants.RET_KW)
+            names.fromString(Constants.RET_KW),
+            names.fromString(Constants.CURRENT_EXECUTOR_KW)
         );
     }
 }

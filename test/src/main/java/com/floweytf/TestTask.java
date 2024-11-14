@@ -5,9 +5,8 @@ import com.floweytf.coro.annotations.Coroutine;
 import com.floweytf.coro.concepts.Awaitable;
 import com.floweytf.coro.concepts.Task;
 import com.floweytf.coro.support.Result;
-import java.util.function.Consumer;
 
-public class Main {
+public class TestTask {
     private static final Awaitable<Void> SWITCH_THREAD = (executor, resume) -> new Thread(
         () -> resume.accept(Result.value(null)),
         "hi"
@@ -150,7 +149,7 @@ public class Main {
         Co.await(testMergeImpl(false));
         Co.await(test10());
         Co.await(test8());
-        Co.await(new Main().memberCo());
+        Co.await(new TestTask().memberCo());
         try {
             Co.await(test7());
         } finally {

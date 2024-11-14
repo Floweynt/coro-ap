@@ -1,6 +1,8 @@
 package com.floweytf.coro.ap.pass;
 
 import com.floweytf.coro.ap.Coroutines;
+import com.floweytf.coro.ap.codegen.GeneratorMethodTransformer;
+import com.floweytf.coro.ap.codegen.TaskMethodTransformer;
 import com.floweytf.coro.ap.util.Util;
 import com.sun.tools.javac.code.Kinds;
 import com.sun.tools.javac.code.Symbol;
@@ -11,6 +13,7 @@ import com.sun.tools.javac.main.JavaCompiler;
 import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.util.Context;
 import com.sun.tools.javac.util.Name;
+import it.unimi.dsi.fastutil.Pair;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
@@ -137,7 +140,7 @@ public class TransformPass {
         }
     }
 
-    public void process(Map<Symbol, List<JCTree.JCMethodDecl>> coroutineMethods, Context context) {
+    public void process(Map<Symbol, Pair<List<JCTree.JCMethodDecl>, List<JCTree.JCMethodDecl>>> coroutineMethods) {
         // We don't care if this is a gen sources or gen javadoc task.
         if (!isCompileTask) {
             return;
@@ -157,24 +160,32 @@ public class TransformPass {
                     new ClassReader(is).accept(classNode, ClassReader.EXPAND_FRAMES);
                 }
 
-                // construct signature array
-                final var coroMethodSignatures = declaration.stream()
+                final var taskMethodSig = declaration.left().stream()
+                    .map(x -> x.getName() + getBinaryName(x.type))
+                    .collect(Collectors.toUnmodifiableSet());
+
+                final var generatorMethodSig = declaration.right().stream()
                     .map(x -> x.getName() + getBinaryName(x.type))
                     .collect(Collectors.toUnmodifiableSet());
 
                 int matchCount = 0;
 
                 for (MethodNode method : classNode.methods) {
-                    if (coroMethodSignatures.contains(method.name + method.desc)) {
-                        final var genClass = MethodTransformer.generate(classNode, method, matchCount);
+                    if (taskMethodSig.contains(method.name + method.desc)) {
+                        final var genClass = new TaskMethodTransformer(classNode, method, matchCount).generate();
+                        final var genOutput = getClassFileFor(classSymbol, genClass.name.replace('/', '.'));
+                        writeClass(genClass, genOutput);
+                        matchCount++;
+                    } else if(generatorMethodSig.contains(method.name + method.desc)) {
+                        final var genClass = new GeneratorMethodTransformer(classNode, method, matchCount).generate();
                         final var genOutput = getClassFileFor(classSymbol, genClass.name.replace('/', '.'));
                         writeClass(genClass, genOutput);
                         matchCount++;
                     }
                 }
 
-                if (matchCount != coroMethodSignatures.size()) {
-                    throw new AssertionError("method number mismatch " + coroMethodSignatures);
+                if (matchCount != taskMethodSig.size() + generatorMethodSig.size()) {
+                    throw new AssertionError("method number mismatch " + taskMethodSig);
                 }
 
                 writeClass(classNode, classFile);

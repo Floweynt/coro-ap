@@ -44,14 +44,6 @@ public abstract class BasicTask<T> implements Task<T> {
         }
     }
 
-    protected static <T, U> void suspendHelper(Awaitable<T> awaitable, BasicTask<U> self, int newState) {
-        awaitable.suspend(self.myExecutor, result -> {
-            self.myExecutor.executeTask(() -> {
-                self.run(newState, result.hasError(), result.mapBoth(x -> x, x -> x));
-            });
-        });
-    }
-
     @Override
     public Task<T> begin(CoroutineExecutor executor) {
         // Need non-weak CAS here, since this absolutely cannot fail (no loop)
@@ -95,7 +87,6 @@ public abstract class BasicTask<T> implements Task<T> {
         }
     }
 
-    @SuppressWarnings("unchecked")
     protected void complete(Result<T> result) {
         var oldResult = RESULT.getAndSet(this, result);
 
@@ -114,12 +105,20 @@ public abstract class BasicTask<T> implements Task<T> {
         }
     }
 
-    protected void completeSuccess(T val) {
-        complete(Result.value(val));
+    protected static <T, U> void suspendHelper(Awaitable<T> awaitable, BasicTask<U> self, int newState) {
+        awaitable.suspend(self.myExecutor, result -> {
+            self.myExecutor.executeTask(() -> {
+                self.run(newState, result.hasError(), result.mapBoth(x -> x, x -> x));
+            });
+        });
     }
 
-    protected void completeError(Throwable val) {
-        complete(Result.error(val));
+    protected static <T> void completeSuccess(T val, BasicTask<T> self) {
+        self.complete(Result.value(val));
+    }
+
+    protected static <T> void completeError(Throwable val, BasicTask<T> self) {
+        self.complete(Result.error(val));
     }
 
     protected CoroutineExecutor getExecutor() {

@@ -9,6 +9,7 @@ import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.util.Context;
 import com.sun.tools.javac.util.JavacMessages;
 import com.sun.tools.javac.util.Names;
+import it.unimi.dsi.fastutil.Pair;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Enumeration;
@@ -22,7 +23,7 @@ public class Coroutines implements TaskListener {
     private final Context context;
     private final CoroNames coroNames;
 
-    private final Map<Symbol, List<JCTree.JCMethodDecl>> coroutineMethods = new IdentityHashMap<>();
+    private final Map<Symbol, Pair<List<JCTree.JCMethodDecl>, List<JCTree.JCMethodDecl>>> coroutineMethods = new IdentityHashMap<>();
 
     public Coroutines(Context context) {
         this.context = context;
@@ -41,15 +42,24 @@ public class Coroutines implements TaskListener {
         });
     }
 
-    public void reportCoroutineMethod(JCTree.JCMethodDecl decl) {
-        coroutineMethods.computeIfAbsent(decl.sym.owner, x -> new ArrayList<>()).add(decl);
+    public void reportCoroutineMethod(JCTree.JCMethodDecl decl, CoroutineKind type) {
+        final var pair = coroutineMethods.computeIfAbsent(decl.sym.owner, x -> Pair.of(
+            new ArrayList<>(),
+            new ArrayList<>()
+        ));
+
+        if (type == CoroutineKind.TASK) {
+            pair.left().add(decl);
+        } else {
+            pair.right().add(decl);
+        }
     }
 
     @Override
     public void finished(TaskEvent event) {
         switch (event.getKind()) {
         case ANALYZE -> ((JCTree.JCCompilationUnit) event.getCompilationUnit()).accept(new ValidatePass(this, event));
-        case COMPILATION -> new TransformPass(this).process(coroutineMethods, context);
+        case COMPILATION -> new TransformPass(this).process(coroutineMethods);
         }
     }
 

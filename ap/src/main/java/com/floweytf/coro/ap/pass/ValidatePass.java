@@ -86,6 +86,10 @@ public class ValidatePass extends TreeScanner {
             return CoroutineKind.TASK;
         }
 
+        if (typeMatch(ident.type, names.generatorClassName())) {
+            return CoroutineKind.GENERATOR;
+        }
+
         return CoroutineKind.NONE;
     }
 
@@ -132,7 +136,7 @@ public class ValidatePass extends TreeScanner {
         }
 
         if (kind != CoroutineKind.NONE) {
-            coroutines.reportCoroutineMethod(tree);
+            coroutines.reportCoroutineMethod(tree, kind);
         }
 
         methodDeclContext.push(new MethodContext(tree, kind));
@@ -166,20 +170,34 @@ public class ValidatePass extends TreeScanner {
 
         if (methodContext.kind == CoroutineKind.NONE) {
             reportError(tree.meth, "Co.* keyword methods cannot be used outside of a Coroutine method");
+            return;
         }
 
-        if (symbol.name == names.awaitName()) {
-            if (methodContext.syncBlockNest > 0) {
-                reportError(tree.meth, "Co.await() cannot be used in a synchronized block");
-            }
-        } else if (symbol.name == names.yieldName()) {
-            if (methodContext.kind != CoroutineKind.GENERATOR) {
-                reportError(tree.meth, "Co.yield() must be used in a generator");
-            }
-        } else if (symbol.name == names.retName()) {
+        if (symbol.name == names.retName()) {
             if (lastReturn == null || lastReturn.expr != tree) {
                 reportError(tree.meth, "Co.ret() cannot be used as a free method; it must be used as `return " +
                     "Co.ret`");
+            }
+
+            return;
+        }
+
+        if (methodContext.kind == CoroutineKind.GENERATOR) {
+            if (symbol.name == names.yieldName()) {
+                if (methodContext.syncBlockNest > 0) {
+                    reportError(tree.meth, "Co.yield() cannot be used in a synchronized block");
+                }
+            } else {
+                reportError(tree.meth, "This Co#<method> cannot be used in a generator");
+            }
+        } else if (methodContext.kind == CoroutineKind.TASK) {
+            if (symbol.name == names.awaitName()) {
+                if (methodContext.syncBlockNest > 0) {
+                    reportError(tree.meth, "Co.await() cannot be used in a synchronized block");
+                }
+            } else if (symbol.name == names.currentExecutorName()) {
+            } else {
+                reportError(tree.meth, "This Co#<method> cannot be used in a task");
             }
         }
     }

@@ -19,6 +19,7 @@ import org.objectweb.asm.commons.AnalyzerAdapter;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.InsnList;
 import org.objectweb.asm.tree.LabelNode;
+import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.VarInsnNode;
 
@@ -198,5 +199,9 @@ public class Util {
             handler.accept(index, type);
             index += type.getSize();
         }
+    }
+
+    public static MethodInsnNode invokeInstr(int opc, ClassNode owner, MethodNode node) {
+        return new MethodInsnNode(opc, owner.name, node.name, node.desc);
     }
 }
