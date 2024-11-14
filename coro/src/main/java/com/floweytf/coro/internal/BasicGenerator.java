@@ -18,20 +18,33 @@ public abstract class BasicGenerator<T> implements Generator<T> {
 
         private final Stack<BasicGenerator<T>> generators = new Stack<>();
         private Result<T> result;
+        private boolean hasPushedGenerator = false;
 
         private GeneratorIterator(BasicGenerator<T> generator) {
+            push(generator);
+            generate();
+        }
+
+        private void push(BasicGenerator<T> generator) {
             generators.push(generator);
             generator.iterator = this;
-            generate();
+            hasPushedGenerator = true;
         }
 
         private void generate() {
             result = null;
+            hasPushedGenerator = false;
             Throwable currentEx = null;
 
             while (!generators.isEmpty()) {
                 final var gen = generators.peek();
                 gen.run(gen.newState, currentEx);
+
+                // if we yielded a sub-generator
+                if(hasPushedGenerator) {
+                    hasPushedGenerator = false;
+                    continue;
+                }
 
                 // this implies that the latest generator has returned with Co.ret()
                 // continue...
@@ -82,7 +95,7 @@ public abstract class BasicGenerator<T> implements Generator<T> {
     private int newState;
 
     protected static <T> void yieldGenerator(Generator<T> generator, BasicGenerator<T> self, int newState) {
-        self.iterator.generators.push((BasicGenerator<T>) generator);
+        self.iterator.push((BasicGenerator<T>) generator);
         self.newState = newState;
     }
 

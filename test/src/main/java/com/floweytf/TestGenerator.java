@@ -8,9 +8,19 @@ import com.floweytf.coro.concepts.Task;
 import com.floweytf.coro.support.Result;
 
 public class TestGenerator {
+
+    @Coroutine
+    public static Generator<Integer> simpleSequenceGenerator() {
+        for(int i = 0; i < 100; i++) {
+            Co.yield(i);
+        }
+        return Co.ret();
+    }
+
     @Coroutine
     public static Generator<Integer> runTests() {
         for(int i = 0; i < 100; i++) {
+            Co.yield(simpleSequenceGenerator());
             Co.yield(i * i);
         }
         return Co.ret();
