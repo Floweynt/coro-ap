@@ -1,11 +1,16 @@
 package com.floweytf.coro.ap.entry;
 
-import com.floweytf.coro.ap.util.Util;
 import com.sun.source.util.JavacTask;
 import com.sun.source.util.Plugin;
+import java.lang.reflect.AccessibleObject;
 import java.util.List;
+import sun.misc.Unsafe;
 
 public class PluginImpl implements Plugin {
+    private static final class Dummy {
+        public boolean firstField;
+    }
+
     @Override
     public String getName() {
         return "coroutine-processor";
@@ -26,17 +31,22 @@ public class PluginImpl implements Plugin {
         "processing", "tree", "util", "jvm", "api"
     );
 
-    // stolen from Lombok - allow us to access JVM internals
+    @SuppressWarnings({"deprecation"})
     private static void addOpens() {
         final var jdkCompilerModule = ModuleLayer.boot().findModule("jdk.compiler").orElseThrow();
         final var ownModule = PluginImpl.class.getModule();
 
         try {
-            final var m = Util.getMethod(Module.class, "implAddOpens", String.class, Module.class);
+            final var unsafeField = Unsafe.class.getDeclaredField("theUnsafe");
+            unsafeField.setAccessible(true);
+            final var unsafe = (Unsafe) unsafeField.get(null);
+            final var m = Module.class.getDeclaredMethod("implAddOpens", String.class, Module.class);
+            unsafe.putBooleanVolatile(m, unsafe.objectFieldOffset(Dummy.class.getDeclaredField("firstField")), true);
             for (final var p : MODULES) {
                 m.invoke(jdkCompilerModule, "com.sun.tools.javac." + p, ownModule);
             }
-        } catch (Exception ignore) {
+        } catch (Exception e) {
+            throw new RuntimeException(e);
         }
     }
 }

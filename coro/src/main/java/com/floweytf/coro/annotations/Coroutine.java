@@ -3,6 +3,7 @@ package com.floweytf.coro.annotations;
 import com.floweytf.coro.Co;
 import com.floweytf.coro.concepts.Awaitable;
 import com.floweytf.coro.concepts.CoroutineExecutor;
+import com.floweytf.coro.concepts.Generator;
 import com.floweytf.coro.concepts.Task;
 import com.floweytf.coro.support.Awaitables;
 import java.lang.annotation.ElementType;
@@ -54,6 +55,7 @@ import java.lang.annotation.Target;
  * @see CoroutineExecutor
  * @see Task
  * @see Awaitables utility methods.
+ * @see Generator generators.
  */
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
