@@ -8,6 +8,7 @@ import static com.floweytf.coro.ap.Constants.BASIC_TASK_GET_EXECUTOR;
 import static com.floweytf.coro.ap.Constants.BASIC_TASK_RUN;
 import static com.floweytf.coro.ap.Constants.BASIC_TASK_SUSPEND_HELPER;
 import static com.floweytf.coro.ap.Constants.CURRENT_EXECUTOR_KW;
+import static com.floweytf.coro.ap.Constants.OBJECT_CLASS_BIN;
 import static com.floweytf.coro.ap.Constants.OBJECT_TYPE;
 import static com.floweytf.coro.ap.Constants.THROWABLE_TYPE;
 import java.util.List;
@@ -53,7 +54,7 @@ public class TaskMethodTransformer extends BasicMethodTransformer {
     }
 
     @Override
-    protected void genResume(InsnList output) {
+    protected void genCheckException(InsnList output) {
         final var exit = new LabelNode();
         output.add(new VarInsnNode(Opcodes.ALOAD, LVT_RES_VAL));
         output.add(new VarInsnNode(Opcodes.ILOAD, LVT_IS_EXCEPTION));
@@ -61,6 +62,13 @@ public class TaskMethodTransformer extends BasicMethodTransformer {
         output.add(new TypeInsnNode(Opcodes.CHECKCAST, THROWABLE_TYPE.getInternalName()));
         output.add(new InsnNode(Opcodes.ATHROW));
         output.add(exit);
+        output.add(createNode(OBJECT_CLASS_BIN));
+        output.add(new InsnNode(Opcodes.POP));
+    }
+
+    @Override
+    protected void genResume(InsnList output) {
+        output.add(new VarInsnNode(Opcodes.ALOAD, LVT_RES_VAL));
     }
 
     @Override

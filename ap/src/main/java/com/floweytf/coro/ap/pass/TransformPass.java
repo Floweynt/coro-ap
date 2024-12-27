@@ -131,7 +131,7 @@ public class TransformPass {
      * @throws IOException When underlying IO operations fail.
      */
     private void writeClass(ClassNode node, JavaFileObject file) throws IOException {
-        final var writer = new org.objectweb.asm.ClassWriter(org.objectweb.asm.ClassWriter.COMPUTE_FRAMES);
+        final var writer = new org.objectweb.asm.ClassWriter(org.objectweb.asm.ClassWriter.COMPUTE_MAXS);
 
         node.accept(writer);
 

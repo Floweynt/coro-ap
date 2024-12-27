@@ -125,7 +125,7 @@ public class TestTask {
     public static Task<Void> testMergeImpl(boolean flag) {
         Comparable test;
 
-        if(flag) {
+        if (flag) {
             test = "test";
         } else {
             test = Co.await(test9());
@@ -169,9 +169,6 @@ public class TestTask {
     }
 
     public static void main(String[] args) {
-        runTests().begin().onComplete(x -> x.match(
-            unused -> System.out.println("Returned normally"),
-            throwable -> throwable.printStackTrace(System.out)
-        ));
+        runTests().begin();
     }
 }

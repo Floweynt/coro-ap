@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.function.BiConsumer;
 import org.jetbrains.annotations.Nullable;
 import org.objectweb.asm.Label;
@@ -123,6 +124,25 @@ public class Util {
             },
             id
         );
+    }
+
+    public static Object typeToFrameType(Type type) {
+        return switch (type.getSort()) {
+            case Type.BOOLEAN, Type.CHAR, Type.BYTE, Type.SHORT, Type.INT -> Opcodes.INTEGER;
+            case Type.FLOAT -> Opcodes.FLOAT;
+            case Type.LONG -> Opcodes.LONG;
+            case Type.DOUBLE -> Opcodes.DOUBLE;
+            case Type.ARRAY, Type.OBJECT -> type.getInternalName();
+            default -> throw new IllegalArgumentException("Bad type " + type.getInternalName() + " in frame");
+        };
+    }
+
+    public static Object cloneFrameType(Object type, Map<LabelNode, LabelNode> mapper) {
+        if(type instanceof LabelNode node) {
+            return mapper.get(node);
+        }
+
+        return type;
     }
 
     public static void withMethodBody(InsnList instructions, BiConsumer<LabelNode, LabelNode> handler) {

@@ -5,6 +5,7 @@ import static com.floweytf.coro.ap.Constants.BASIC_GENERATOR_COMPLETE_ERROR;
 import static com.floweytf.coro.ap.Constants.BASIC_GENERATOR_RUN;
 import static com.floweytf.coro.ap.Constants.BASIC_GENERATOR_YIELD_GENERATOR;
 import static com.floweytf.coro.ap.Constants.BASIC_GENERATOR_YIELD_VALUE;
+import static com.floweytf.coro.ap.Constants.OBJECT_CLASS_BIN;
 import static com.floweytf.coro.ap.Constants.OBJECT_TYPE;
 import static com.floweytf.coro.ap.Constants.THROWABLE_TYPE;
 import static com.floweytf.coro.ap.Constants.YIELD_KW;
@@ -19,7 +20,6 @@ import org.objectweb.asm.tree.LabelNode;
 import org.objectweb.asm.tree.LocalVariableNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
-import org.objectweb.asm.tree.TypeInsnNode;
 import org.objectweb.asm.tree.VarInsnNode;
 
 public class GeneratorMethodTransformer extends BasicMethodTransformer {
@@ -51,14 +51,18 @@ public class GeneratorMethodTransformer extends BasicMethodTransformer {
     }
 
     @Override
-    protected void genResume(InsnList output) {
+    protected void genCheckException(InsnList output) {
         final var exit = new LabelNode();
         output.add(new VarInsnNode(Opcodes.ALOAD, LVT_EXCEPTION));
         output.add(new JumpInsnNode(Opcodes.IFNULL, exit));
         output.add(new VarInsnNode(Opcodes.ALOAD, LVT_EXCEPTION));
-        output.add(new TypeInsnNode(Opcodes.CHECKCAST, THROWABLE_TYPE.getInternalName()));
         output.add(new InsnNode(Opcodes.ATHROW));
         output.add(exit);
+        output.add(createNode());
+    }
+
+    @Override
+    protected void genResume(InsnList output) {
     }
 
     @Override

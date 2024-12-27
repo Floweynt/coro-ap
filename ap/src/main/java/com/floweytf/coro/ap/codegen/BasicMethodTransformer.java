@@ -3,6 +3,7 @@ package com.floweytf.coro.ap.codegen;
 import com.floweytf.coro.ap.Constants;
 import static com.floweytf.coro.ap.Constants.CO_CLASS_BIN;
 import static com.floweytf.coro.ap.Constants.RET_KW;
+import static com.floweytf.coro.ap.Constants.THROWABLE_CLASS_BIN;
 import static com.floweytf.coro.ap.Constants.THROWABLE_TYPE;
 import com.floweytf.coro.ap.util.Util;
 import it.unimi.dsi.fastutil.objects.Object2IntArrayMap;
@@ -10,6 +11,7 @@ import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import java.io.PrintWriter;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 import org.objectweb.asm.Opcodes;
@@ -19,6 +21,7 @@ import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.FieldNode;
+import org.objectweb.asm.tree.FrameNode;
 import org.objectweb.asm.tree.IincInsnNode;
 import org.objectweb.asm.tree.InnerClassNode;
 import org.objectweb.asm.tree.InsnList;
@@ -52,6 +55,8 @@ public abstract class BasicMethodTransformer {
     private final int lvtOffset;
     private final Constants.MethodDesc handleException;
 
+    private final Object[] initialLVTTypes;
+
     /**
      * A simple method transformer capable of handling coroutine methods.
      *
@@ -70,8 +75,13 @@ public abstract class BasicMethodTransformer {
         this.argTypes = Util.getAllMethodArgs(methodOwner, coMethod);
         this.coMethod = coMethod;
         this.implClass = new ClassNode();
-        this.implClassCons = new MethodNode(0, "<init>", Type.getMethodType(Type.VOID_TYPE,
-            argTypes.toArray(Type[]::new)).getDescriptor(), null, null);
+        this.implClassCons = new MethodNode(
+            0,
+            "<init>",
+            Type.getMethodDescriptor(Type.VOID_TYPE, argTypes.toArray(Type[]::new)),
+            null,
+            coMethod.exceptions.toArray(String[]::new)
+        );
         this.implMethod = implMethodDesc.node(Opcodes.ACC_PROTECTED);
 
         // set up necessary attributes to recognize our generated class as an inner class
@@ -95,6 +105,18 @@ public abstract class BasicMethodTransformer {
         methodOwner.nestMembers.add(implClass.name);
 
         this.analyzer = new AnalyzerAdapter(methodOwner.name, coMethod.access, coMethod.name, coMethod.desc, null);
+
+
+        this.initialLVTTypes = new Object[1 + implMethodDesc.arguments().length];
+
+        initialLVTTypes[0] = implClass.name;
+        for (int i = 0; i < implMethodDesc.arguments().length; i++) {
+            initialLVTTypes[i + 1] = Util.typeToFrameType(implMethodDesc.arguments()[i]);
+        }
+    }
+
+    protected FrameNode createNode(Object... stack) {
+        return new FrameNode(Opcodes.F_NEW, initialLVTTypes.length, initialLVTTypes, stack.length, stack);
     }
 
     private static boolean isCoMethod(AbstractInsnNode node) {
@@ -206,8 +228,13 @@ public abstract class BasicMethodTransformer {
         output.add(new InsnNode(Opcodes.RETURN));
 
         output.add(resumeLabel);
+
+        output.add(createNode());
+        genCheckException(output);
+
         resumeLocal.run();
         resumeStack.run();
+
         genResume(output);
 
         resumeLabels.add(resumeLabel);
@@ -237,6 +264,8 @@ public abstract class BasicMethodTransformer {
         //   { dup, getfield, store }
         //   pop
         output.add(entryLabel);
+        // this is the entry point, which means we have locals == args
+        output.add(createNode());
         output.add(new VarInsnNode(Opcodes.ALOAD, LVT_THIS));
         Util.forEachArgType(argTypes, (index, argType) -> {
             output.add(new InsnNode(Opcodes.DUP));
@@ -255,7 +284,6 @@ public abstract class BasicMethodTransformer {
                 output.add(new VarInsnNode(varInstNode.getOpcode(), remapLVT(varInstNode.var)));
             } else if (instruction instanceof IincInsnNode iincInsnNode) {
                 // remap lvt for all variable instructions
-                // annoying, iinc is special
                 output.add(new IincInsnNode(remapLVT(iincInsnNode.var), iincInsnNode.incr));
             } else if (isCoMethod(instruction) && analyzer.stack != null) {
                 final var methodInstr = (MethodInsnNode) instruction;
@@ -271,6 +299,28 @@ public abstract class BasicMethodTransformer {
                 } else {
                     handleCoMethod(output, methodInstr);
                 }
+            } else if (instruction instanceof FrameNode frameNode) {
+                final var locals = new Object[lvtOffset + frameNode.local.size()];
+                final var stack = new Object[frameNode.stack.size()];
+
+                System.arraycopy(initialLVTTypes, 0, locals, 0, initialLVTTypes.length);
+                Arrays.fill(locals, initialLVTTypes.length, lvtOffset, Opcodes.TOP);
+
+                for (int off = 0; off < frameNode.local.size(); off++) {
+                    locals[lvtOffset + off] = Util.cloneFrameType(frameNode.local.get(off), labelCloner);
+                }
+
+                for (int off = 0; off < frameNode.stack.size(); off++) {
+                    stack[off] = Util.cloneFrameType(frameNode.stack.get(off), labelCloner);
+                }
+
+                output.add(new FrameNode(
+                    Opcodes.F_NEW,
+                    locals.length,
+                    locals,
+                    stack.length,
+                    stack
+                ));
             } else {
                 // copy over the instruction
                 output.add(instruction.clone(labelCloner));
@@ -302,6 +352,7 @@ public abstract class BasicMethodTransformer {
         Util.withMethodBody(output, (start, end) -> {
             final var catcher = new LabelNode();
             output.add(catcher);
+            output.add(createNode(THROWABLE_CLASS_BIN));
             output.add(new VarInsnNode(Opcodes.ALOAD, LVT_THIS));
             output.add(handleException.instr(Opcodes.INVOKESTATIC));
             output.add(new InsnNode(Opcodes.RETURN));
@@ -390,6 +441,8 @@ public abstract class BasicMethodTransformer {
     protected abstract void genReportSuspend(InsnList output, MethodInsnNode originalMethod);
 
     protected abstract void genReportReturn(InsnList output, MethodInsnNode methodInstr);
+
+    protected abstract void genCheckException(InsnList output);
 
     protected abstract void genResume(InsnList output);
 
