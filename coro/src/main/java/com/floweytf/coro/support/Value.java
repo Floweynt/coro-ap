@@ -16,22 +16,22 @@ record Value<T>(T t) implements Result<T> {
     }
 
     @Override
-    public <U> Result<U> andThen(Function<T, Result<U>> app) {
+    public <U> Result<U> andThen(final Function<T, Result<U>> app) {
         return app.apply(t);
     }
 
     @Override
-    public <U> Result<U> mapValue(Function<T, U> app) {
+    public <U> Result<U> mapValue(final Function<T, U> app) {
         return new Value<>(app.apply(t));
     }
 
     @Override
-    public <U> U mapBoth(Function<T, U> valueMap, Function<Throwable, U> errorMap) {
+    public <U> U mapBoth(final Function<T, U> valueMap, final Function<Throwable, U> errorMap) {
         return valueMap.apply(t);
     }
 
     @Override
-    public void match(Consumer<T> valueConsumer, Consumer<Throwable> errorConsumer) {
+    public void match(final Consumer<T> valueConsumer, final Consumer<Throwable> errorConsumer) {
         valueConsumer.accept(t);
     }
 }

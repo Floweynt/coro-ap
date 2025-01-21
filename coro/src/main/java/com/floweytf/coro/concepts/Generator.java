@@ -5,6 +5,7 @@ import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 import org.jetbrains.annotations.ApiStatus;
 
+// TODO: technically violates the contract of Iterable
 @ApiStatus.NonExtendable
 public interface Generator<T> extends Iterable<T> {
     default Stream<T> stream() {

@@ -37,7 +37,7 @@ public interface CoroutineExecutor {
      */
     CoroutineExecutor EAGER = new CoroutineExecutor() {
         @Override
-        public void executeTask(Runnable handler) {
+        public void executeTask(final Runnable handler) {
             handler.run();
         }
 

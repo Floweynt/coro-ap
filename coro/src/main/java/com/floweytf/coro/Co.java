@@ -42,7 +42,7 @@ public class Co {
      * @param <T>   The type of the value being yielded.
      * @throws AssertionError If called directly, indicating the AP is not set up.
      */
-    public static <T> void yield(T value) {
+    public static <T> void yield(final T value) {
         throw new AssertionError("Co.yield(T) should never be called directly; have you set up the AP properly?");
     }
 
@@ -58,7 +58,7 @@ public class Co {
      * @param <T>   The type of the value being yielded.
      * @throws AssertionError If called directly, indicating the AP is not set up.
      */
-    public static <T> void yield(Generator<T> value) {
+    public static <T> void yield(final Generator<T> value) {
         throw new AssertionError("Co.yield(T) should never be called directly; have you set up the AP properly?");
     }
 
@@ -92,7 +92,7 @@ public class Co {
      * solely to pass compilation.
      * @throws AssertionError If called directly, indicating the AP is not set up.
      */
-    public static <T> Task<T> ret(T value) {
+    public static <T> Task<T> ret(final T value) {
         throw new AssertionError("Co.ret(T) should never be called directly; have you set up the AP properly?");
     }
 
@@ -110,7 +110,7 @@ public class Co {
      * placeholder for coroutine handling.
      * @throws AssertionError If called directly, indicating the AP is not set up.
      */
-    public static <T> T await(Awaitable<T> awaitable) {
+    public static <T> T await(final Awaitable<T> awaitable) {
         throw new AssertionError("Co.await(T) should never be called directly; have you set up the AP properly?");
     }
 

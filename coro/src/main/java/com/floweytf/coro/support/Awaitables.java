@@ -27,7 +27,7 @@ public class Awaitables {
      * @param <T>    The type of the result that the {@link CompletableFuture} produces.
      * @return An {@link Awaitable} that may be awaited using {@link Co#await(Awaitable)}.
      */
-    public static <T> Awaitable<T> awaitable(CompletableFuture<T> future) {
+    public static <T> Awaitable<T> awaitable(final CompletableFuture<T> future) {
         return (executor, resume) -> future.whenComplete((value, throwable) -> {
             if (throwable != null) {
                 resume.accept(Result.error(throwable));
@@ -48,7 +48,7 @@ public class Awaitables {
      * @param <T>      The return type of the {@link Task}.
      * @return An {@link Awaitable} that runs the {@link Task} on the specified {@code executor}.
      */
-    public static <T> Awaitable<T> withExecutor(CoroutineExecutor executor, Task<T> task) {
+    public static <T> Awaitable<T> withExecutor(final CoroutineExecutor executor, final Task<T> task) {
         return (oldExecutor, resume) -> {
             task.begin(executor); // Start the task with the new executor
             task.onComplete(resume); // Set up the continuation
@@ -66,7 +66,7 @@ public class Awaitables {
      * @param <T>       The result type of the {@link Awaitable}.
      * @return A {@link CompletableFuture} that represents the result of the {@link Awaitable}.
      */
-    public static <T> CompletableFuture<T> future(CoroutineExecutor executor, Awaitable<T> awaitable) {
+    public static <T> CompletableFuture<T> future(final CoroutineExecutor executor, final Awaitable<T> awaitable) {
         final var future = new CompletableFuture<T>();
 
         awaitable.suspend(executor, tResult -> tResult.match(
@@ -89,7 +89,7 @@ public class Awaitables {
      * @return A {@link CompletableFuture} that represents the result of the {@link Awaitable}.
      * @see CoroutineExecutor#EAGER
      */
-    public static <T> CompletableFuture<T> future(Awaitable<T> awaitable) {
+    public static <T> CompletableFuture<T> future(final Awaitable<T> awaitable) {
         return future(CoroutineExecutor.EAGER, awaitable); // Use the default eager executor
     }
 }

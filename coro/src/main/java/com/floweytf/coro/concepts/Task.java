@@ -65,7 +65,7 @@ public interface Task<T> extends Awaitable<T> {
      * @param resume   The continuation function to call when the task completes.
      */
     @Override
-    default void suspend(CoroutineExecutor executor, Consumer<Result<T>> resume) {
+    default void suspend(final CoroutineExecutor executor, final Consumer<Result<T>> resume) {
         begin(executor);
         onComplete(resume);
     }

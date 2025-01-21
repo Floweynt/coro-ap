@@ -18,14 +18,14 @@ public abstract class BasicGenerator<T> implements Generator<T> {
 
         private final Stack<BasicGenerator<T>> generators = new Stack<>();
         private Result<T> result;
-        private boolean hasPushedGenerator = false;
+        private boolean hasPushedGenerator;
 
-        private GeneratorIterator(BasicGenerator<T> generator) {
+        private GeneratorIterator(final BasicGenerator<T> generator) {
             push(generator);
             generate();
         }
 
-        private void push(BasicGenerator<T> generator) {
+        private void push(final BasicGenerator<T> generator) {
             generators.push(generator);
             generator.iterator = this;
             hasPushedGenerator = true;
@@ -41,7 +41,7 @@ public abstract class BasicGenerator<T> implements Generator<T> {
                 gen.run(gen.newState, currentEx);
 
                 // if we yielded a sub-generator
-                if(hasPushedGenerator) {
+                if (hasPushedGenerator) {
                     hasPushedGenerator = false;
                     continue;
                 }
@@ -94,17 +94,17 @@ public abstract class BasicGenerator<T> implements Generator<T> {
     private GeneratorIterator<T> iterator;
     private int newState;
 
-    protected static <T> void yieldGenerator(Generator<T> generator, BasicGenerator<T> self, int newState) {
+    protected static <T> void yieldGenerator(final Generator<T> generator, final BasicGenerator<T> self, final int newState) {
         self.iterator.push((BasicGenerator<T>) generator);
         self.newState = newState;
     }
 
-    protected static <T> void yieldValue(T value, BasicGenerator<T> self, int newState) {
+    protected static <T> void yieldValue(final T value, final BasicGenerator<T> self, final int newState) {
         self.iterator.result = Result.value(value);
         self.newState = newState;
     }
 
-    protected static <T> void completeError(Throwable value, BasicGenerator<T> self) {
+    protected static <T> void completeError(final Throwable value, final BasicGenerator<T> self) {
         self.iterator.result = Result.error(value);
     }
 
@@ -112,7 +112,7 @@ public abstract class BasicGenerator<T> implements Generator<T> {
 
     @Override
     public @NotNull java.util.Iterator<T> iterator() {
-        if(iterator == null) {
+        if (iterator == null) {
             iterator = new GeneratorIterator<>(this);
         }
 

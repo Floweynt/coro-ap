@@ -17,7 +17,7 @@ public sealed interface Result<T> permits Error, Value {
      * @param <T>   The type of the result's value.
      * @return A {@link Result} encapsulating the successful value.
      */
-    static <T> Result<T> value(T value) {
+    static <T> Result<T> value(final T value) {
         return new Value<>(value);
     }
 
@@ -28,7 +28,7 @@ public sealed interface Result<T> permits Error, Value {
      * @param <T> The type of the successful return value of the result (irrelevant in case of an error).
      * @return A {@link Result} encapsulating the error.
      */
-    static <T> Result<T> error(Throwable err) {
+    static <T> Result<T> error(final Throwable err) {
         return new Error<>(err);
     }
 

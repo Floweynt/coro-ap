@@ -16,7 +16,7 @@ public abstract class BasicTask<T> implements Task<T> {
         public Entry<T> next;
         public final Consumer<Result<T>> handler;
 
-        private Entry(Consumer<Result<T>> handler) {
+        private Entry(final Consumer<Result<T>> handler) {
             this.handler = handler;
         }
     }
@@ -33,7 +33,7 @@ public abstract class BasicTask<T> implements Task<T> {
     private static final VarHandle RESULT;
 
     static {
-        MethodHandles.Lookup lookup = MethodHandles.lookup();
+        final var lookup = MethodHandles.lookup();
 
         try {
             COMPLETE_STACK = lookup.findVarHandle(BasicTask.class, "completeStack", Entry.class);
@@ -45,7 +45,7 @@ public abstract class BasicTask<T> implements Task<T> {
     }
 
     @Override
-    public Task<T> begin(CoroutineExecutor executor) {
+    public Task<T> begin(final CoroutineExecutor executor) {
         // Need non-weak CAS here, since this absolutely cannot fail (no loop)
         // if it's nonnull, that means begin() was already called and there's no need to start it again
         if (MY_EXECUTOR.compareAndSet(this, null, executor)) {
@@ -56,7 +56,7 @@ public abstract class BasicTask<T> implements Task<T> {
     }
 
     @Override
-    public void onComplete(Consumer<Result<T>> resume) {
+    public void onComplete(final Consumer<Result<T>> resume) {
         final var newNode = new Entry<T>(x -> myExecutor.executeTask(() -> resume.accept(x)));
 
         while (true) {
@@ -87,8 +87,8 @@ public abstract class BasicTask<T> implements Task<T> {
         }
     }
 
-    protected void complete(Result<T> result) {
-        var oldResult = RESULT.getAndSet(this, result);
+    protected void complete(final Result<T> result) {
+        final var oldResult = RESULT.getAndSet(this, result);
 
         if (oldResult != null) {
             return;
@@ -105,7 +105,7 @@ public abstract class BasicTask<T> implements Task<T> {
         }
     }
 
-    protected static <T, U> void suspendHelper(Awaitable<T> awaitable, BasicTask<U> self, int newState) {
+    protected static <T, U> void suspendHelper(final Awaitable<T> awaitable, final BasicTask<U> self, final int newState) {
         awaitable.suspend(self.myExecutor, result -> {
             self.myExecutor.executeTask(() -> {
                 self.run(newState, result.hasError(), result.mapBoth(x -> x, x -> x));
@@ -113,11 +113,11 @@ public abstract class BasicTask<T> implements Task<T> {
         });
     }
 
-    protected static <T> void completeSuccess(T val, BasicTask<T> self) {
+    protected static <T> void completeSuccess(final T val, final BasicTask<T> self) {
         self.complete(Result.value(val));
     }
 
-    protected static <T> void completeError(Throwable val, BasicTask<T> self) {
+    protected static <T> void completeError(final Throwable val, final BasicTask<T> self) {
         self.complete(Result.error(val));
     }
 

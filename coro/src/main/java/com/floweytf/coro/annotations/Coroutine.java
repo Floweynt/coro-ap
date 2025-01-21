@@ -15,7 +15,7 @@ import java.lang.annotation.Target;
  * Annotation to mark a method as a coroutine. All coroutines are <i>stackless</i>.
  * <br>
  * A coroutine is a method that may be suspended. All methods annotated with {@code Coroutine} must return a
- * {@link Task}. In a coroutine, methods such as
+ * {@link Task} or a {@link Generator}. In a coroutine, methods such as
  * {@link Co#await(Awaitable)} and {@link Co#ret()}/{@link Co#ret(Object)} become available,
  * allowing for imperative async code without callbacks. For example, an echo server could be implemented like:
  * <pre>{@code
@@ -58,6 +58,6 @@ import java.lang.annotation.Target;
  * @see Generator generators.
  */
 @Target(ElementType.METHOD)
-@Retention(RetentionPolicy.RUNTIME)
+@Retention(RetentionPolicy.CLASS)
 public @interface Coroutine {
 }
