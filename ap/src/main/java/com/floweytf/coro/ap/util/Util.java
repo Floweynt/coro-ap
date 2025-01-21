@@ -21,16 +21,6 @@ import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.VarInsnNode;
 
 public class Util {
-    public static boolean isStatic(MethodNode node) {
-        return (node.access & Opcodes.ACC_STATIC) != 0;
-    }
-
-    public static Symbol.ModuleSymbol getModule(Symbol.ClassSymbol symbol) {
-        return symbol.owner.kind == Kinds.Kind.MDL ?
-            (Symbol.ModuleSymbol) symbol.owner :
-            symbol.packge().modle;
-    }
-
     @FunctionalInterface
     public interface LocalVariableHandler {
         void accept(int index, @Nullable Type type, boolean isInit);
@@ -46,7 +36,17 @@ public class Util {
         void accept(@Nullable Type type, boolean isInit);
     }
 
-    public static void forEachLocal(AnalyzerAdapter frame, LocalVariableHandler handler) {
+    public static boolean isStatic(final MethodNode node) {
+        return (node.access & Opcodes.ACC_STATIC) != 0;
+    }
+
+    public static Symbol.ModuleSymbol getModule(final Symbol.ClassSymbol symbol) {
+        return symbol.owner.kind == Kinds.Kind.MDL ?
+            (Symbol.ModuleSymbol) symbol.owner :
+            symbol.packge().modle;
+    }
+
+    public static void forEachLocal(final AnalyzerAdapter frame, final LocalVariableHandler handler) {
         for (int i = 0; i < frame.locals.size(); i++) {
             final var local = frame.locals.get(i);
 
@@ -64,15 +64,15 @@ public class Util {
                 handler.accept(i, Type.DOUBLE_TYPE, true);
             } else if (local == Opcodes.NULL) {
                 handler.accept(i, null, true);
-            } else if (local instanceof String name) {
+            } else if (local instanceof final String name) {
                 handler.accept(i, Type.getObjectType(name), true);
-            } else if (local instanceof Label label) {
-                label.getOffset();
+            } else if (local instanceof final Label label) {
+                handler.accept(i, Type.getObjectType((String) frame.uninitializedTypes.get(label)), false);
             }
         }
     }
 
-    public static void forEachStack(AnalyzerAdapter frame, int offset, StackHandler handler) {
+    public static void forEachStack(final AnalyzerAdapter frame, final int offset, final StackHandler handler) {
         for (int i = frame.stack.size() - 1 - offset; i >= 0; i--) {
             final var stack = frame.stack.get(i);
 
@@ -90,15 +90,17 @@ public class Util {
                 handler.accept(Type.DOUBLE_TYPE, true);
             } else if (stack == Opcodes.NULL) {
                 handler.accept(null, true);
-            } else if (stack instanceof String name) {
+            } else if (stack instanceof final String name) {
                 handler.accept(Type.getObjectType(name), true);
+            } else if (stack instanceof final Label label) {
+                handler.accept(Type.getObjectType((String) frame.uninitializedTypes.get(label)), false);
             } else {
                 throw new IllegalStateException("not implemented");
             }
         }
     }
 
-    public static VarInsnNode loadLocal(int id, Type type) {
+    public static VarInsnNode loadLocal(final int id, final Type type) {
         return new VarInsnNode(
             switch (type.getSort()) {
                 case Type.BOOLEAN, Type.CHAR, Type.BYTE, Type.SHORT, Type.INT -> Opcodes.ILOAD;
@@ -112,7 +114,7 @@ public class Util {
         );
     }
 
-    public static VarInsnNode storeLocal(int id, Type type) {
+    public static VarInsnNode storeLocal(final int id, final Type type) {
         return new VarInsnNode(
             switch (type.getSort()) {
                 case Type.BOOLEAN, Type.CHAR, Type.BYTE, Type.SHORT, Type.INT -> Opcodes.ISTORE;
@@ -126,7 +128,7 @@ public class Util {
         );
     }
 
-    public static Object typeToFrameType(Type type) {
+    public static Object typeToFrameType(final Type type) {
         return switch (type.getSort()) {
             case Type.BOOLEAN, Type.CHAR, Type.BYTE, Type.SHORT, Type.INT -> Opcodes.INTEGER;
             case Type.FLOAT -> Opcodes.FLOAT;
@@ -137,15 +139,15 @@ public class Util {
         };
     }
 
-    public static Object cloneFrameType(Object type, Map<LabelNode, LabelNode> mapper) {
-        if(type instanceof LabelNode node) {
+    public static Object cloneFrameType(final Object type, final Map<LabelNode, LabelNode> mapper) {
+        if (type instanceof final LabelNode node) {
             return mapper.get(node);
         }
 
         return type;
     }
 
-    public static void withMethodBody(InsnList instructions, BiConsumer<LabelNode, LabelNode> handler) {
+    public static void withMethodBody(final InsnList instructions, final BiConsumer<LabelNode, LabelNode> handler) {
         final var startLabel = new LabelNode();
         final var endLabel = new LabelNode();
 
@@ -155,7 +157,7 @@ public class Util {
         handler.accept(startLabel, endLabel);
     }
 
-    public static List<Type> getAllMethodArgs(ClassNode owner, MethodNode method) {
+    public static List<Type> getAllMethodArgs(final ClassNode owner, final MethodNode method) {
         final var res = new ArrayList<>(Arrays.asList(Type.getMethodType(method.desc).getArgumentTypes()));
 
         if (!Util.isStatic(method)) {
@@ -165,15 +167,15 @@ public class Util {
         return Collections.unmodifiableList(res);
     }
 
-    public static void forEachArgType(List<Type> types, ArgumentVariableHandler handler) {
+    public static void forEachArgType(final List<Type> types, final ArgumentVariableHandler handler) {
         int index = 0;
-        for (Type type : types) {
+        for (final Type type : types) {
             handler.accept(index, type);
             index += type.getSize();
         }
     }
 
-    public static MethodInsnNode invokeInstr(int opc, ClassNode owner, MethodNode node) {
+    public static MethodInsnNode invokeInstr(final int opc, final ClassNode owner, final MethodNode node) {
         return new MethodInsnNode(opc, owner.name, node.name, node.desc);
     }
 }

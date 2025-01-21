@@ -66,9 +66,10 @@ public abstract class BasicMethodTransformer {
      * @param lvtScratch  The scratch LVT variable index.
      * @param lvtOffset   The LVT offset to remap locals.
      */
-    protected BasicMethodTransformer(ClassNode methodOwner, MethodNode coMethod, int id, int lvtScratch,
-                                     int lvtOffset, Constants.MethodDesc handleException, String superClass,
-                                     Constants.MethodDesc implMethodDesc) {
+    protected BasicMethodTransformer(final ClassNode methodOwner, final MethodNode coMethod, final int id,
+                                     final int lvtScratch, final int lvtOffset,
+                                     final Constants.MethodDesc handleException, final String superClass,
+                                     final Constants.MethodDesc implMethodDesc) {
         this.lvtScratch = lvtScratch;
         this.lvtOffset = lvtOffset;
         this.handleException = handleException;
@@ -106,7 +107,6 @@ public abstract class BasicMethodTransformer {
 
         this.analyzer = new AnalyzerAdapter(methodOwner.name, coMethod.access, coMethod.name, coMethod.desc, null);
 
-
         this.initialLVTTypes = new Object[1 + implMethodDesc.arguments().length];
 
         initialLVTTypes[0] = implClass.name;
@@ -115,31 +115,31 @@ public abstract class BasicMethodTransformer {
         }
     }
 
-    protected FrameNode createNode(Object... stack) {
-        return new FrameNode(Opcodes.F_NEW, initialLVTTypes.length, initialLVTTypes, stack.length, stack);
-    }
-
-    private static boolean isCoMethod(AbstractInsnNode node) {
-        if (!(node instanceof MethodInsnNode methodInsnNode)) {
+    private static boolean isCoMethod(final AbstractInsnNode node) {
+        if (!(node instanceof final MethodInsnNode methodInsnNode)) {
             return false;
         }
 
         return node.getOpcode() == Opcodes.INVOKESTATIC && methodInsnNode.owner.equals(CO_CLASS_BIN);
     }
 
-    private int remapLVT(int lvt) {
+    protected FrameNode createNode(final Object... stack) {
+        return new FrameNode(Opcodes.F_NEW, initialLVTTypes.length, initialLVTTypes, stack.length, stack);
+    }
+
+    private int remapLVT(final int lvt) {
         return lvt + lvtOffset;
     }
 
-    private FieldInsnNode scratchField(int opc, int id, Type value) {
+    private FieldInsnNode scratchField(final int opc, final int id, final Type value) {
         return new FieldInsnNode(opc, implClass.name, "l" + id, value.getDescriptor());
     }
 
-    private FieldInsnNode argField(int opc, int id, Type type) {
+    private FieldInsnNode argField(final int opc, final int id, final Type type) {
         return new FieldInsnNode(opc, implClass.name, "arg" + id, type.getDescriptor());
     }
 
-    private Runnable suspendSaveLocals(AnalyzerAdapter frame, Object2IntMap<Type> allocMap) {
+    private Runnable suspendSaveLocals(final AnalyzerAdapter frame, final Object2IntMap<Type> allocMap) {
         final var output = implMethod.instructions;
         final var resumeInstr = new InsnList();
 
@@ -152,8 +152,15 @@ public abstract class BasicMethodTransformer {
         resumeInstr.add(new VarInsnNode(Opcodes.ALOAD, LVT_THIS));
 
         Util.forEachLocal(frame, (localIndex, type, isInit) -> {
-            // TODO: handle isInit
-            if (type != null) {
+            if (type == null) { // handle the null literal type
+                output.add(new InsnNode(Opcodes.POP));
+                resumeInstr.add(new InsnNode(Opcodes.ACONST_NULL));
+                resumeInstr.add(new VarInsnNode(Opcodes.ASTORE, remapLVT(localIndex)));
+            } else if (!isInit) { // handle uninitialized reference type
+                output.add(new InsnNode(Opcodes.POP));
+                resumeInstr.add(new TypeInsnNode(Opcodes.NEW, type.getInternalName()));
+                resumeInstr.add(new VarInsnNode(Opcodes.ASTORE, remapLVT(localIndex)));
+            } else {
                 final var fieldNum = fieldAllocator.getOrAllocateFieldId(type, allocMap);
 
                 output.add(new InsnNode(Opcodes.DUP));
@@ -163,10 +170,6 @@ public abstract class BasicMethodTransformer {
                 resumeInstr.add(new InsnNode(Opcodes.DUP));
                 resumeInstr.add(scratchField(Opcodes.GETFIELD, fieldNum, type));
                 resumeInstr.add(Util.storeLocal(remapLVT(localIndex), type));
-            } else {
-                output.add(new InsnNode(Opcodes.POP));
-                resumeInstr.add(new InsnNode(Opcodes.ACONST_NULL));
-                resumeInstr.add(new VarInsnNode(Opcodes.ASTORE, remapLVT(localIndex)));
             }
         });
 
@@ -176,17 +179,19 @@ public abstract class BasicMethodTransformer {
         return () -> output.add(resumeInstr);
     }
 
-    private Runnable suspendSaveStack(AnalyzerAdapter frame, Object2IntMap<Type> allocMap) {
+    private Runnable suspendSaveStack(final AnalyzerAdapter frame, final Object2IntMap<Type> allocMap) {
         final var resumeReversed = new ArrayList<AbstractInsnNode>();
         final var output = implMethod.instructions;
 
         if (frame.stack.size() > 1) {
             output.add(new VarInsnNode(Opcodes.ASTORE, lvtScratch));
             Util.forEachStack(frame, 1, (type, isInit) -> {
-                // TODO: handle isInit
-                if (type == null) {
+                if (type == null) { // handle the null literal type
                     output.add(new InsnNode(Opcodes.POP));
                     resumeReversed.add(new InsnNode(Opcodes.ACONST_NULL));
+                } else if (!isInit) { // handle uninitialized reference type
+                    output.add(new InsnNode(Opcodes.POP));
+                    resumeReversed.add(new TypeInsnNode(Opcodes.NEW, type.getInternalName()));
                 } else {
                     final var fieldId = fieldAllocator.getOrAllocateFieldId(type, allocMap);
                     output.add(new VarInsnNode(Opcodes.ALOAD, LVT_THIS));
@@ -208,13 +213,13 @@ public abstract class BasicMethodTransformer {
         }
 
         return () -> {
-            for (int i = resumeReversed.size() - 1; i >= 0; i--) {
+            for (var i = resumeReversed.size() - 1; i >= 0; i--) {
                 output.add(resumeReversed.get(i));
             }
         };
     }
 
-    protected final void genSuspendPoint(MethodInsnNode originalMethod) {
+    protected final void genSuspendPoint(final MethodInsnNode originalMethod) {
         final var output = implMethod.instructions;
         final var allocMap = new Object2IntArrayMap<Type>();
         final var resumeLabel = new LabelNode();
@@ -244,7 +249,7 @@ public abstract class BasicMethodTransformer {
         final var output = implMethod.instructions;
         final var labelCloner = new Object2ObjectOpenHashMap<LabelNode, LabelNode>() {
             @Override
-            public LabelNode get(Object k) {
+            public LabelNode get(final Object k) {
                 var res = super.get(k);
                 if (res == null) {
                     res = new LabelNode();
@@ -276,13 +281,13 @@ public abstract class BasicMethodTransformer {
 
         // process method body
         final var instructions = coMethod.instructions.toArray();
-        for (int i = 0; i < instructions.length; i++) {
+        for (var i = 0; i < instructions.length; i++) {
             final var instruction = instructions[i];
 
-            if (instruction instanceof VarInsnNode varInstNode) {
+            if (instruction instanceof final VarInsnNode varInstNode) {
                 // remap lvt for all variable instructions
                 output.add(new VarInsnNode(varInstNode.getOpcode(), remapLVT(varInstNode.var)));
-            } else if (instruction instanceof IincInsnNode iincInsnNode) {
+            } else if (instruction instanceof final IincInsnNode iincInsnNode) {
                 // remap lvt for all variable instructions
                 output.add(new IincInsnNode(remapLVT(iincInsnNode.var), iincInsnNode.incr));
             } else if (isCoMethod(instruction) && analyzer.stack != null) {
@@ -299,7 +304,7 @@ public abstract class BasicMethodTransformer {
                 } else {
                     handleCoMethod(output, methodInstr);
                 }
-            } else if (instruction instanceof FrameNode frameNode) {
+            } else if (instruction instanceof final FrameNode frameNode) {
                 final var locals = new Object[lvtOffset + frameNode.local.size()];
                 final var stack = new Object[frameNode.stack.size()];
 

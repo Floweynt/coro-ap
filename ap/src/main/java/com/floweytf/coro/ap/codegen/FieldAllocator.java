@@ -11,9 +11,9 @@ import org.objectweb.asm.tree.FieldNode;
 
 public class FieldAllocator {
     private final Map<Type, IntList> pool = new Object2ObjectOpenHashMap<>();
-    private int allocFieldId = 0;
+    private int allocFieldId;
 
-    public int getOrAllocateFieldId(Type type, Object2IntMap<Type> map) {
+    public int getOrAllocateFieldId(final Type type, final Object2IntMap<Type> map) {
         final var index = map.getOrDefault(type, 0);
         final var fields = pool.computeIfAbsent(type, ignored -> new IntArrayList());
 
@@ -25,7 +25,7 @@ public class FieldAllocator {
         return fields.getInt(index);
     }
 
-    public void codegen(List<FieldNode> fields, int access) {
+    public void codegen(final List<FieldNode> fields, final int access) {
         pool.forEach((type, integers) -> {
             integers.forEach(i -> {
                 fields.add(new FieldNode(access, "l" + i, type.getDescriptor(), null, null));

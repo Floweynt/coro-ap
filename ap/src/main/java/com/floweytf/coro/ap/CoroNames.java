@@ -13,7 +13,7 @@ public record CoroNames(
     Name retName,
     Name currentExecutorName
 ) {
-    CoroNames(Names names) {
+    CoroNames(final Names names) {
         this(
             names.fromString(Constants.COROUTINE_ANN),
             names.fromString(Constants.CO_CLASS),

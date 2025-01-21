@@ -11,7 +11,6 @@ import com.sun.tools.javac.code.Types;
 import com.sun.tools.javac.jvm.ClassWriter;
 import com.sun.tools.javac.main.JavaCompiler;
 import com.sun.tools.javac.tree.JCTree;
-import com.sun.tools.javac.util.Context;
 import com.sun.tools.javac.util.Name;
 import it.unimi.dsi.fastutil.Pair;
 import java.io.IOException;
@@ -29,19 +28,19 @@ public class TransformPass {
     private static class SigGenerator extends Types.SignatureGenerator {
         private final StringBuilder sb = new StringBuilder();
 
-        private SigGenerator(Types types) {
+        private SigGenerator(final Types types) {
             super(types);
         }
 
-        protected void append(char ch) {
+        protected void append(final char ch) {
             this.sb.append(ch);
         }
 
-        protected void append(byte[] ba) {
+        protected void append(final byte[] ba) {
             this.sb.append(new String(ba));
         }
 
-        protected void append(Name name) {
+        protected void append(final Name name) {
             this.sb.append(name.toString());
         }
     }
@@ -52,7 +51,7 @@ public class TransformPass {
     private final SigGenerator sigGenerator;
     private final Types types;
 
-    public TransformPass(Coroutines coroutines) {
+    public TransformPass(final Coroutines coroutines) {
         isCompileTask = !JavaCompiler.instance(coroutines.getContext()).sourceOutput;
         fileManager = coroutines.getContext().get(JavaFileManager.class);
         writer = ClassWriter.instance(coroutines.getContext());
@@ -67,7 +66,7 @@ public class TransformPass {
      * @param symbol The symbol.
      * @return The class name.
      */
-    private String getClassName(Symbol.ClassSymbol symbol) {
+    private String getClassName(final Symbol.ClassSymbol symbol) {
         return (symbol.owner.kind == Kinds.Kind.MDL ? symbol.name : symbol.flatname).toString();
     }
 
@@ -80,9 +79,9 @@ public class TransformPass {
      *               replaced with an inner class when emitting generated classes.
      * @return The file object representing the output file.
      */
-    private JavaFileObject getClassFileFor(Symbol.ClassSymbol symbol, String name) {
+    private JavaFileObject getClassFileFor(final Symbol.ClassSymbol symbol, final String name) {
         try {
-            JavaFileManager.Location outLocation;
+            final JavaFileManager.Location outLocation;
 
             if (writer.multiModuleMode) {
                 outLocation = fileManager.getLocationForModule(
@@ -94,7 +93,7 @@ public class TransformPass {
             }
 
             return fileManager.getJavaFileForOutput(outLocation, name, JavaFileObject.Kind.CLASS, symbol.sourcefile);
-        } catch (IOException e) {
+        } catch (final IOException e) {
             throw new RuntimeException(e);
         }
     }
@@ -106,7 +105,7 @@ public class TransformPass {
      * @param symbol The class.
      * @return The file object representing the output file.
      */
-    private JavaFileObject getClassFileFor(Symbol.ClassSymbol symbol) {
+    private JavaFileObject getClassFileFor(final Symbol.ClassSymbol symbol) {
         return getClassFileFor(symbol, getClassName(symbol));
     }
 
@@ -116,7 +115,7 @@ public class TransformPass {
      * @param type The source level type.
      * @return The JVM typename.
      */
-    private String getBinaryName(Type type) {
+    private String getBinaryName(final Type type) {
         sigGenerator.assembleSig(types.erasure(type));
         final var ret = sigGenerator.sb.toString();
         sigGenerator.sb.setLength(0);
@@ -130,7 +129,7 @@ public class TransformPass {
      * @param file The output file.
      * @throws IOException When underlying IO operations fail.
      */
-    private void writeClass(ClassNode node, JavaFileObject file) throws IOException {
+    private void writeClass(final ClassNode node, final JavaFileObject file) throws IOException {
         final var writer = new org.objectweb.asm.ClassWriter(org.objectweb.asm.ClassWriter.COMPUTE_MAXS);
 
         node.accept(writer);
@@ -140,7 +139,7 @@ public class TransformPass {
         }
     }
 
-    public void process(Map<Symbol, Pair<List<JCTree.JCMethodDecl>, List<JCTree.JCMethodDecl>>> coroutineMethods) {
+    public void process(final Map<Symbol, Pair<List<JCTree.JCMethodDecl>, List<JCTree.JCMethodDecl>>> coroutineMethods) {
         // We don't care if this is a gen sources or gen javadoc task.
         if (!isCompileTask) {
             return;
@@ -149,7 +148,7 @@ public class TransformPass {
         coroutineMethods.forEach(((ownerSymbol, declaration) -> {
             try {
                 // We should probably be smarter here.
-                if (!(ownerSymbol instanceof Symbol.ClassSymbol classSymbol)) {
+                if (!(ownerSymbol instanceof final Symbol.ClassSymbol classSymbol)) {
                     throw new IllegalStateException();
                 }
 
@@ -170,13 +169,13 @@ public class TransformPass {
 
                 int matchCount = 0;
 
-                for (MethodNode method : classNode.methods) {
+                for (final MethodNode method : classNode.methods) {
                     if (taskMethodSig.contains(method.name + method.desc)) {
                         final var genClass = new TaskMethodTransformer(classNode, method, matchCount).generate();
                         final var genOutput = getClassFileFor(classSymbol, genClass.name.replace('/', '.'));
                         writeClass(genClass, genOutput);
                         matchCount++;
-                    } else if(generatorMethodSig.contains(method.name + method.desc)) {
+                    } else if (generatorMethodSig.contains(method.name + method.desc)) {
                         final var genClass = new GeneratorMethodTransformer(classNode, method, matchCount).generate();
                         final var genOutput = getClassFileFor(classSymbol, genClass.name.replace('/', '.'));
                         writeClass(genClass, genOutput);
@@ -189,7 +188,7 @@ public class TransformPass {
                 }
 
                 writeClass(classNode, classFile);
-            } catch (IOException e) {
+            } catch (final IOException e) {
                 throw new RuntimeException(e);
             }
         }));

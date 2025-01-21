@@ -5,6 +5,8 @@ import com.floweytf.coro.annotations.Coroutine;
 import com.floweytf.coro.concepts.Awaitable;
 import com.floweytf.coro.concepts.Task;
 import com.floweytf.coro.support.Result;
+import java.util.concurrent.atomic.AtomicInteger;
+import javax.annotation.processing.SupportedSourceVersion;
 
 public class TestTask {
     private static final Awaitable<Void> SWITCH_THREAD = (executor, resume) -> new Thread(
@@ -122,6 +124,36 @@ public class TestTask {
     }
 
     @Coroutine
+    public static Task<Void> test11() {
+        long value = 12;
+
+        if(Boolean.getBoolean("flag")) {
+            value = 11;
+        } else {
+            value = 13;
+        }
+
+        System.out.println(value);
+
+        return Co.ret();
+    }
+
+    @Coroutine
+    public static Task<Void> test12() {
+        final var temp = new Test();
+        Co.await(SWITCH_THREAD);
+        System.out.println(temp);
+        return Co.ret();
+    }
+
+    @Coroutine
+    public static Task<Void> test13() {
+        final var temp = new AtomicInteger(Co.await(test9()));
+        System.out.println(temp);
+        return Co.ret();
+    }
+
+    @Coroutine
     public static Task<Void> testMergeImpl(boolean flag) {
         Comparable test;
 
@@ -150,6 +182,9 @@ public class TestTask {
         Co.await(test10());
         Co.await(test8());
         Co.await(new TestTask().memberCo());
+        Co.await(test11());
+        Co.await(test12());
+        Co.await(test13());
         try {
             Co.await(test7());
         } finally {

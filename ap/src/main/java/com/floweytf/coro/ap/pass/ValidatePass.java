@@ -24,7 +24,7 @@ public class ValidatePass extends TreeScanner {
         private final CoroutineKind kind;
         private int syncBlockNest;
 
-        private MethodContext(JCTree.JCMethodDecl method, CoroutineKind kind) {
+        private MethodContext(final JCTree.JCMethodDecl method, final CoroutineKind kind) {
             this.method = method;
             this.kind = kind;
         }
@@ -33,15 +33,14 @@ public class ValidatePass extends TreeScanner {
     private static final MethodContext NIL = new MethodContext(null, null);
 
     private final Deque<MethodContext> methodDeclContext = new ArrayDeque<>();
-    private JCTree.JCReturn lastReturn = null;
-
     private final Coroutines coroutines;
     private final Log log;
     private final CoroNames names;
     private final JCDiagnostic.Factory diagFactory;
     private final DiagnosticSource source;
+    private JCTree.JCReturn lastReturn;
 
-    public ValidatePass(Coroutines coroutines, TaskEvent event) {
+    public ValidatePass(final Coroutines coroutines, final TaskEvent event) {
         this.coroutines = coroutines;
         log = Log.instance(coroutines.getContext());
         source = new DiagnosticSource(event.getSourceFile(), log);
@@ -49,7 +48,7 @@ public class ValidatePass extends TreeScanner {
         names = coroutines.coroNames();
     }
 
-    private void reportError(JCDiagnostic.DiagnosticPosition pos, String message) {
+    private void reportError(final JCDiagnostic.DiagnosticPosition pos, final String message) {
         log.report(diagFactory.error(
             JCDiagnostic.DiagnosticFlag.SYNTAX, source, pos, Constants.DIAGNOSTIC_KEY, message
         ));
@@ -65,20 +64,20 @@ public class ValidatePass extends TreeScanner {
         return entry;
     }
 
-    private boolean typeMatch(Symbol symbol, Name name) {
+    private boolean typeMatch(final Symbol symbol, final Name name) {
         return symbol.flatName() == name;
     }
 
-    private boolean typeMatch(Type type, Name name) {
+    private boolean typeMatch(final Type type, final Name name) {
         return typeMatch(type.tsym, name);
     }
 
-    private CoroutineKind getKindFromReturnType(JCTree tree) {
-        if (!(tree instanceof JCTree.JCTypeApply apply)) {
+    private CoroutineKind getKindFromReturnType(final JCTree tree) {
+        if (!(tree instanceof final JCTree.JCTypeApply apply)) {
             return CoroutineKind.NONE;
         }
 
-        if (!(apply.getType() instanceof JCTree.JCIdent ident)) {
+        if (!(apply.getType() instanceof final JCTree.JCIdent ident)) {
             return CoroutineKind.NONE;
         }
 
@@ -94,28 +93,14 @@ public class ValidatePass extends TreeScanner {
     }
 
     @Override
-    public void visitSynchronized(JCTree.JCSynchronized tree) {
-        currentContext().syncBlockNest++;
-        super.visitSynchronized(tree);
-        currentContext().syncBlockNest--;
-    }
-
-    @Override
-    public void visitClassDef(JCTree.JCClassDecl tree) {
+    public void visitClassDef(final JCTree.JCClassDecl tree) {
         methodDeclContext.push(NIL);
         super.visitClassDef(tree);
         methodDeclContext.pop();
     }
 
     @Override
-    public void visitLambda(JCTree.JCLambda tree) {
-        methodDeclContext.push(NIL);
-        super.visitLambda(tree);
-        methodDeclContext.pop();
-    }
-
-    @Override
-    public void visitMethodDef(JCTree.JCMethodDecl tree) {
+    public void visitMethodDef(final JCTree.JCMethodDecl tree) {
         final var coroAnnotation = tree.mods.annotations
             .stream()
             .filter(ann -> typeMatch(ann.type, names.coroutineAnnotationName()))
@@ -144,19 +129,24 @@ public class ValidatePass extends TreeScanner {
         methodDeclContext.pop();
     }
 
-    private Symbol getMethodSymbol(JCTree.JCExpression expression) {
-        Symbol symbol = null;
-        if (expression instanceof JCTree.JCIdent ident) {
-            symbol = ident.sym;
-        } else if (expression instanceof JCTree.JCFieldAccess fieldAccess) {
-            symbol = fieldAccess.sym;
-        }
-        return symbol;
+    @Override
+    public void visitSynchronized(final JCTree.JCSynchronized tree) {
+        currentContext().syncBlockNest++;
+        super.visitSynchronized(tree);
+        currentContext().syncBlockNest--;
     }
 
     @Override
-    public void visitApply(JCTree.JCMethodInvocation tree) {
-        Symbol symbol = getMethodSymbol(tree.meth);
+    public void visitReturn(final JCTree.JCReturn tree) {
+        lastReturn = tree;
+        validateReturn(tree);
+        super.visitReturn(tree);
+        lastReturn = null;
+    }
+
+    @Override
+    public void visitApply(final JCTree.JCMethodInvocation tree) {
+        final Symbol symbol = getMethodSymbol(tree.meth);
 
         if (symbol == null) {
             return;
@@ -202,27 +192,36 @@ public class ValidatePass extends TreeScanner {
         }
     }
 
-    private void validateReturn(JCTree.JCReturn tree) {
+    @Override
+    public void visitLambda(final JCTree.JCLambda tree) {
+        methodDeclContext.push(NIL);
+        super.visitLambda(tree);
+        methodDeclContext.pop();
+    }
+
+    private Symbol getMethodSymbol(final JCTree.JCExpression expression) {
+        Symbol symbol = null;
+        if (expression instanceof final JCTree.JCIdent ident) {
+            symbol = ident.sym;
+        } else if (expression instanceof final JCTree.JCFieldAccess fieldAccess) {
+            symbol = fieldAccess.sym;
+        }
+        return symbol;
+    }
+
+    private void validateReturn(final JCTree.JCReturn tree) {
         if (currentContext().kind == CoroutineKind.NONE) {
             return;
         }
-        if (!(tree.expr instanceof JCTree.JCMethodInvocation invocation)) {
+        if (!(tree.expr instanceof final JCTree.JCMethodInvocation invocation)) {
             reportError(tree, "return is not allowed in Coroutine method; it must be used as `return Co.ret`");
             return;
         }
 
-        Symbol symbol = getMethodSymbol(invocation.meth);
+        final Symbol symbol = getMethodSymbol(invocation.meth);
 
         if (symbol == null || !typeMatch(symbol.owner, names.coClassName()) || symbol.name != names.retName()) {
             reportError(tree, "return is not allowed in Coroutine method; it must be used as `return Co.ret`");
         }
-    }
-
-    @Override
-    public void visitReturn(JCTree.JCReturn tree) {
-        lastReturn = tree;
-        validateReturn(tree);
-        super.visitReturn(tree);
-        lastReturn = null;
     }
 }

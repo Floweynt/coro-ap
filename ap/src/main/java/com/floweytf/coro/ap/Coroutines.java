@@ -23,15 +23,16 @@ public class Coroutines implements TaskListener {
     private final Context context;
     private final CoroNames coroNames;
 
-    private final Map<Symbol, Pair<List<JCTree.JCMethodDecl>, List<JCTree.JCMethodDecl>>> coroutineMethods = new IdentityHashMap<>();
+    private final Map<Symbol, Pair<List<JCTree.JCMethodDecl>, List<JCTree.JCMethodDecl>>> coroutineMethods =
+        new IdentityHashMap<>();
 
-    public Coroutines(Context context) {
+    public Coroutines(final Context context) {
         this.context = context;
         coroNames = new CoroNames(Names.instance(context));
 
         JavacMessages.instance(context).add(locale -> new ResourceBundle() {
             @Override
-            protected Object handleGetObject(@NotNull String key) {
+            protected Object handleGetObject(@NotNull final String key) {
                 return "{0}";
             }
 
@@ -42,7 +43,7 @@ public class Coroutines implements TaskListener {
         });
     }
 
-    public void reportCoroutineMethod(JCTree.JCMethodDecl decl, CoroutineKind type) {
+    public void reportCoroutineMethod(final JCTree.JCMethodDecl decl, final CoroutineKind type) {
         final var pair = coroutineMethods.computeIfAbsent(decl.sym.owner, x -> Pair.of(
             new ArrayList<>(),
             new ArrayList<>()
@@ -56,7 +57,7 @@ public class Coroutines implements TaskListener {
     }
 
     @Override
-    public void finished(TaskEvent event) {
+    public void finished(final TaskEvent event) {
         switch (event.getKind()) {
         case ANALYZE -> ((JCTree.JCCompilationUnit) event.getCompilationUnit()).accept(new ValidatePass(this, event));
         case COMPILATION -> new TransformPass(this).process(coroutineMethods);

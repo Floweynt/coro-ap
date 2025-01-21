@@ -5,7 +5,6 @@ import static com.floweytf.coro.ap.Constants.BASIC_GENERATOR_COMPLETE_ERROR;
 import static com.floweytf.coro.ap.Constants.BASIC_GENERATOR_RUN;
 import static com.floweytf.coro.ap.Constants.BASIC_GENERATOR_YIELD_GENERATOR;
 import static com.floweytf.coro.ap.Constants.BASIC_GENERATOR_YIELD_VALUE;
-import static com.floweytf.coro.ap.Constants.OBJECT_CLASS_BIN;
 import static com.floweytf.coro.ap.Constants.OBJECT_TYPE;
 import static com.floweytf.coro.ap.Constants.THROWABLE_TYPE;
 import static com.floweytf.coro.ap.Constants.YIELD_KW;
@@ -27,7 +26,7 @@ public class GeneratorMethodTransformer extends BasicMethodTransformer {
     private static final int LVT_SCRATCH_SMALL = LVT_STATE + 2;
     private static final int LVT_OFFSET = LVT_STATE + 3;
 
-    public GeneratorMethodTransformer(ClassNode coMethodOwner, MethodNode coMethod, int id) {
+    public GeneratorMethodTransformer(final ClassNode coMethodOwner, final MethodNode coMethod, final int id) {
         super(
             coMethodOwner, coMethod, id, LVT_SCRATCH_SMALL, LVT_OFFSET,
             BASIC_GENERATOR_COMPLETE_ERROR, BASIC_GENERATOR_CLASS_BIN, BASIC_GENERATOR_RUN
@@ -35,7 +34,7 @@ public class GeneratorMethodTransformer extends BasicMethodTransformer {
     }
 
     @Override
-    protected void genReportSuspend(InsnList output, MethodInsnNode originalMethod) {
+    protected void genReportSuspend(final InsnList output, final MethodInsnNode originalMethod) {
         if (Type.getArgumentTypes(originalMethod.desc)[0].equals(OBJECT_TYPE)) {
             output.add(BASIC_GENERATOR_YIELD_VALUE.instr(Opcodes.INVOKESTATIC));
         } else {
@@ -44,14 +43,14 @@ public class GeneratorMethodTransformer extends BasicMethodTransformer {
     }
 
     @Override
-    protected void genReportReturn(InsnList output, MethodInsnNode methodInstr) {
+    protected void genReportReturn(final InsnList output, final MethodInsnNode methodInstr) {
         if (Type.getArgumentCount(methodInstr.desc) != 0) {
             output.add(new InsnNode(Opcodes.POP));
         }
     }
 
     @Override
-    protected void genCheckException(InsnList output) {
+    protected void genCheckException(final InsnList output) {
         final var exit = new LabelNode();
         output.add(new VarInsnNode(Opcodes.ALOAD, LVT_EXCEPTION));
         output.add(new JumpInsnNode(Opcodes.IFNULL, exit));
@@ -62,16 +61,16 @@ public class GeneratorMethodTransformer extends BasicMethodTransformer {
     }
 
     @Override
-    protected void genResume(InsnList output) {
+    protected void genResume(final InsnList output) {
     }
 
     @Override
-    protected void genLocals(LabelNode begin, LabelNode end, List<LocalVariableNode> lvt) {
+    protected void genLocals(final LabelNode begin, final LabelNode end, final List<LocalVariableNode> lvt) {
         lvt.add(new LocalVariableNode("ex", THROWABLE_TYPE.getDescriptor(), null, begin, end, LVT_EXCEPTION));
     }
 
     @Override
-    protected void handleCoMethod(InsnList output, MethodInsnNode methodInstr) {
+    protected void handleCoMethod(final InsnList output, final MethodInsnNode methodInstr) {
         if (methodInstr.name.equals(YIELD_KW)) {
             genSuspendPoint(methodInstr);
         } else {

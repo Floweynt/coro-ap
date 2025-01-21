@@ -31,7 +31,7 @@ public class TaskMethodTransformer extends BasicMethodTransformer {
     private static final int LVT_SCRATCH_SMALL = LVT_STATE + 3;
     private static final int LVT_OFFSET = LVT_STATE + 4;
 
-    public TaskMethodTransformer(ClassNode coMethodOwner, MethodNode coMethod, int id) {
+    public TaskMethodTransformer(final ClassNode coMethodOwner, final MethodNode coMethod, final int id) {
         super(
             coMethodOwner, coMethod, id, LVT_SCRATCH_SMALL, LVT_OFFSET, BASIC_TASK_COMPLETE_ERROR,
             BASIC_TASK_CLASS_BIN, BASIC_TASK_RUN
@@ -39,12 +39,12 @@ public class TaskMethodTransformer extends BasicMethodTransformer {
     }
 
     @Override
-    protected void genReportSuspend(InsnList output, MethodInsnNode originalMethod) {
+    protected void genReportSuspend(final InsnList output, final MethodInsnNode originalMethod) {
         output.add(BASIC_TASK_SUSPEND_HELPER.instr(Opcodes.INVOKESTATIC));
     }
 
     @Override
-    protected void genReportReturn(InsnList output, MethodInsnNode methodInstr) {
+    protected void genReportReturn(final InsnList output, final MethodInsnNode methodInstr) {
         if (Type.getArgumentCount(methodInstr.desc) == 0) {
             output.add(new InsnNode(Opcodes.ACONST_NULL));
         }
@@ -54,7 +54,7 @@ public class TaskMethodTransformer extends BasicMethodTransformer {
     }
 
     @Override
-    protected void genCheckException(InsnList output) {
+    protected void genCheckException(final InsnList output) {
         final var exit = new LabelNode();
         output.add(new VarInsnNode(Opcodes.ALOAD, LVT_RES_VAL));
         output.add(new VarInsnNode(Opcodes.ILOAD, LVT_IS_EXCEPTION));
@@ -67,18 +67,18 @@ public class TaskMethodTransformer extends BasicMethodTransformer {
     }
 
     @Override
-    protected void genResume(InsnList output) {
+    protected void genResume(final InsnList output) {
         output.add(new VarInsnNode(Opcodes.ALOAD, LVT_RES_VAL));
     }
 
     @Override
-    protected void genLocals(LabelNode begin, LabelNode end, List<LocalVariableNode> lvt) {
+    protected void genLocals(final LabelNode begin, final LabelNode end, final List<LocalVariableNode> lvt) {
         lvt.add(new LocalVariableNode("isEx", Type.BOOLEAN_TYPE.getDescriptor(), null, begin, end, LVT_IS_EXCEPTION));
         lvt.add(new LocalVariableNode("res", OBJECT_TYPE.getDescriptor(), null, begin, end, LVT_RES_VAL));
     }
 
     @Override
-    protected void handleCoMethod(InsnList output, MethodInsnNode methodInstr) {
+    protected void handleCoMethod(final InsnList output, final MethodInsnNode methodInstr) {
         if (methodInstr.name.equals(AWAIT_KW)) {
             genSuspendPoint(methodInstr);
         } else if (methodInstr.name.equals(CURRENT_EXECUTOR_KW)) {

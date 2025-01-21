@@ -8,14 +8,6 @@ import com.sun.source.util.JavacTask;
  */
 public interface PluginDelegate {
     /**
-     * Initialize the plugin.
-     *
-     * @param javacTask The task.
-     * @param strings   Compiler arguments.
-     */
-    void init(JavacTask javacTask, String... strings);
-
-    /**
      * Creates an instance of the implementation.
      *
      * @return An instance of the implementation.
@@ -25,8 +17,16 @@ public interface PluginDelegate {
             return (PluginDelegate) Class.forName("com.floweytf.coro.ap.PluginDelegateImpl")
                 .getConstructor()
                 .newInstance();
-        } catch (Exception e) {
+        } catch (final Exception e) {
             throw new RuntimeException(e);
         }
     }
+
+    /**
+     * Initialize the plugin.
+     *
+     * @param javacTask The task.
+     * @param strings   Compiler arguments.
+     */
+    void init(JavacTask javacTask, String... strings);
 }
