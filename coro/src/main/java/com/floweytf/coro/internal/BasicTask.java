@@ -1,6 +1,7 @@
 package com.floweytf.coro.internal;
 
 import com.floweytf.coro.concepts.Awaitable;
+import com.floweytf.coro.concepts.Continuation;
 import com.floweytf.coro.concepts.CoroutineExecutor;
 import com.floweytf.coro.concepts.Task;
 import com.floweytf.coro.support.Result;
@@ -24,8 +25,11 @@ public abstract class BasicTask<T> implements Task<T> {
     private static final Entry NIL = new Entry<>(ignored -> {
     });
 
+    @SuppressWarnings("FieldMayBeFinal")
     private volatile Entry<T> completeStack = NIL;
+    @SuppressWarnings("unused")
     private volatile CoroutineExecutor myExecutor;
+    @SuppressWarnings("unused")
     private volatile Result<T> result;
 
     private static final VarHandle COMPLETE_STACK;
@@ -39,7 +43,7 @@ public abstract class BasicTask<T> implements Task<T> {
             COMPLETE_STACK = lookup.findVarHandle(BasicTask.class, "completeStack", Entry.class);
             MY_EXECUTOR = lookup.findVarHandle(BasicTask.class, "myExecutor", CoroutineExecutor.class);
             RESULT = lookup.findVarHandle(BasicTask.class, "result", Result.class);
-        } catch (NoSuchFieldException | IllegalAccessException e) {
+        } catch (final NoSuchFieldException | IllegalAccessException e) {
             throw new RuntimeException(e);
         }
     }
@@ -105,11 +109,23 @@ public abstract class BasicTask<T> implements Task<T> {
         }
     }
 
-    protected static <T, U> void suspendHelper(final Awaitable<T> awaitable, final BasicTask<U> self, final int newState) {
-        awaitable.suspend(self.myExecutor, result -> {
-            self.myExecutor.executeTask(() -> {
-                self.run(newState, result.hasError(), result.mapBoth(x -> x, x -> x));
-            });
+    @Override
+    public void suspend(final CoroutineExecutor executor, final Continuation<T> resume) {
+        begin(executor);
+        onComplete(tResult -> tResult.match(resume::submit, resume::submitError));
+    }
+
+    protected static <T, U> void suspendHelper(final Awaitable<T> task, final BasicTask<U> self, final int target) {
+        task.suspend(self.getExecutor(), new Continuation<>() {
+            @Override
+            public void submitError(final Throwable error) {
+                self.myExecutor.executeTask(() -> self.run(target, true, error));
+            }
+
+            @Override
+            public void submit(final T value) {
+                self.myExecutor.executeTask(() -> self.run(target, false, value));
+            }
         });
     }
 

@@ -2,6 +2,7 @@ package com.floweytf.coro.support;
 
 import com.floweytf.coro.Co;
 import com.floweytf.coro.concepts.Awaitable;
+import com.floweytf.coro.concepts.Continuation;
 import com.floweytf.coro.concepts.CoroutineExecutor;
 import com.floweytf.coro.concepts.Task;
 import java.util.concurrent.CompletableFuture;
@@ -30,9 +31,9 @@ public class Awaitables {
     public static <T> Awaitable<T> awaitable(final CompletableFuture<T> future) {
         return (executor, resume) -> future.whenComplete((value, throwable) -> {
             if (throwable != null) {
-                resume.accept(Result.error(throwable));
+                resume.submitError(throwable);
             } else {
-                resume.accept(Result.value(value));
+                resume.submit(value);
             }
         });
     }
@@ -51,7 +52,7 @@ public class Awaitables {
     public static <T> Awaitable<T> withExecutor(final CoroutineExecutor executor, final Task<T> task) {
         return (oldExecutor, resume) -> {
             task.begin(executor); // Start the task with the new executor
-            task.onComplete(resume); // Set up the continuation
+            task.onComplete(res -> res.match(resume::submit, resume::submitError)); // Set up the continuation
         };
     }
 
@@ -69,10 +70,17 @@ public class Awaitables {
     public static <T> CompletableFuture<T> future(final CoroutineExecutor executor, final Awaitable<T> awaitable) {
         final var future = new CompletableFuture<T>();
 
-        awaitable.suspend(executor, tResult -> tResult.match(
-            future::complete, // Complete the future if the result is successful
-            future::completeExceptionally // Complete exceptionally if there was an error
-        ));
+        awaitable.suspend(executor, new Continuation<>() {
+            @Override
+            public void submitError(final Throwable error) {
+                future.completeExceptionally(error);
+            }
+
+            @Override
+            public void submit(final T value) {
+                future.complete(value);
+            }
+        });
 
         return future;
     }

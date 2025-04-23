@@ -1,5 +1,6 @@
 plugins {
-    id("java")
+    java
+    `maven-publish`
 }
 
 group = "com.floweytf.coro"
@@ -11,6 +12,7 @@ allprojects {
     version = ver
     group = "com.floweytf.coro"
     apply(plugin = "java")
+    apply(plugin = "maven-publish")
 
     repositories {
         mavenCentral()
@@ -23,5 +25,11 @@ allprojects {
     java {
         withSourcesJar()
         withJavadocJar()
+    }
+
+    publishing {
+        repositories {
+            mavenLocal()
+        }
     }
 }

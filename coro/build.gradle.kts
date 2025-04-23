@@ -3,6 +3,7 @@ repositories {
 }
 
 dependencies {
+    testAnnotationProcessor(project(":ap"))
 }
 
 tasks.test {

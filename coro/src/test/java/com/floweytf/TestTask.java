@@ -4,13 +4,11 @@ import com.floweytf.coro.Co;
 import com.floweytf.coro.annotations.Coroutine;
 import com.floweytf.coro.concepts.Awaitable;
 import com.floweytf.coro.concepts.Task;
-import com.floweytf.coro.support.Result;
 import java.util.concurrent.atomic.AtomicInteger;
-import javax.annotation.processing.SupportedSourceVersion;
 
 public class TestTask {
     private static final Awaitable<Void> SWITCH_THREAD = (executor, resume) -> new Thread(
-        () -> resume.accept(Result.value(null)),
+        () -> resume.submit(null),
         "hi"
     ).start();
 
@@ -24,7 +22,7 @@ public class TestTask {
 
     @Coroutine
     public static Task<Void> test1() {
-        int a = 0;
+        final int a = 0;
         System.out.println("Hello from thread: " + Thread.currentThread().getName());
         Co.await(SWITCH_THREAD);
         System.out.println("Hello from thread: " + Thread.currentThread().getName());
@@ -34,10 +32,10 @@ public class TestTask {
 
     @Coroutine
     public static Task<Void> test2() {
-        int a = 0;
+        final int a = 0;
         System.out.println("Hello from thread: " + Thread.currentThread().getName());
         Co.await((executor, resume) -> new Thread(
-            () -> resume.accept(Result.value(null)),
+            () -> resume.submit(null),
             "hi"
         ).start());
         System.out.println("Hello from thread: " + Thread.currentThread().getName());
@@ -47,7 +45,7 @@ public class TestTask {
 
     @Coroutine
     public static Task<Void> test3() {
-        int a = 0;
+        final int a = 0;
         System.out.println("Hello from thread: " + Thread.currentThread().getName());
         Co.await(SWITCH_THREAD);
         System.out.println("Hello from thread: " + Thread.currentThread().getName());
@@ -61,7 +59,7 @@ public class TestTask {
         System.out.println("Hello from thread: " + Thread.currentThread().getName());
         a++;
         Co.await((executor, resume) -> new Thread(
-            () -> resume.accept(Result.value(null)),
+            () -> resume.submit(null),
             "hi"
         ).start());
         System.out.println("Hello from thread: " + Thread.currentThread().getName());
@@ -70,7 +68,7 @@ public class TestTask {
     }
 
     @Coroutine
-    public static Task<Void> test5(int arg) {
+    public static Task<Void> test5(final int arg) {
         int a = 0;
         System.out.println("Hello from thread: " + Thread.currentThread().getName());
         a++;
@@ -83,12 +81,12 @@ public class TestTask {
     }
 
     @Coroutine
-    public static Task<Void> test6(int arg) {
+    public static Task<Void> test6(final int arg) {
         for (int i = 0; i < arg; i++) {
             System.out.println("Hello from thread: " + Thread.currentThread().getName());
-            int finalI = i;
-            Co.await((executor, resume) -> new Thread(
-                () -> resume.accept(Result.value(null)),
+            final int finalI = i;
+            Co.await((executor,  resume) -> new Thread(
+                () -> resume.submit(null),
                 "hi " + finalI
             ).start());
             System.out.println("Hello from thread: " + Thread.currentThread().getName());
@@ -106,7 +104,7 @@ public class TestTask {
     public static Task<Void> test8() {
         try {
             Co.await(test7());
-        } catch (IllegalStateException e) {
+        } catch (final IllegalStateException e) {
             System.out.println("caught exception!");
         }
         return Co.ret();
@@ -154,8 +152,8 @@ public class TestTask {
     }
 
     @Coroutine
-    public static Task<Void> testMergeImpl(boolean flag) {
-        Comparable test;
+    public static Task<Void> testMergeImpl(final boolean flag) {
+        final Comparable<?> test;
 
         if (flag) {
             test = "test";
@@ -203,7 +201,7 @@ public class TestTask {
         return Co.ret();
     }
 
-    public static void main(String[] args) {
+    public static void main(final String[] args) {
         runTests().begin();
     }
 }
