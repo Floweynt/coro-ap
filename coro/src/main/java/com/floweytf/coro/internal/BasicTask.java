@@ -116,14 +116,20 @@ public abstract class BasicTask<T> implements Task<T> {
     }
 
     protected static <T, U> void suspendHelper(final Awaitable<T> awaitable, final BasicTask<U> self, final int state) {
+        final var executor = self.getExecutor();
+
+        executor.onSuspend(self, awaitable);
+
         awaitable.suspend(self.getExecutor(), new Continuation<>() {
             @Override
             public void submitError(final Throwable error) {
+                executor.onResumeExceptionally(self, awaitable, error);
                 self.myExecutor.executeTask(() -> self.run(state, true, error));
             }
 
             @Override
             public void submit(final T value) {
+                executor.onResume(self, awaitable, value);
                 self.myExecutor.executeTask(() -> self.run(state, false, value));
             }
         });

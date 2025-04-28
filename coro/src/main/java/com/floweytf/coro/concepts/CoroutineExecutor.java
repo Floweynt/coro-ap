@@ -22,11 +22,42 @@ public interface CoroutineExecutor {
      * continuation will be executed when the current coroutine suspends and is ready to resume. The manner in which
      * this task is dispatched depends on the specific {@code CoroutineExecutor} used (e.g., on a specific thread,
      * asynchronously, etc.).
+     * </p>
      *
      * @param handler The task (continuation) to run. This is typically the next step or the callback to execute after
      *                a coroutine suspends.
      */
     void executeTask(Runnable handler);
+
+    /**
+     * Called before a task suspends.
+     *
+     * @param task      The task that is being suspended.
+     * @param awaitable The awaitable to wait on.
+     */
+    default void onSuspend(final Task<?> task, final Awaitable<?> awaitable) {
+    }
+
+    /**
+     * Called after a task resumes <i>normally</i>.
+     *
+     * @param task      The task that is to be resumed.
+     * @param awaitable The awaitable that has just completed.
+     * @param result    The result of the awaitable.
+     * @param <T>       The result type of the awaitable.
+     */
+    default <T> void onResume(final Task<?> task, final Awaitable<T> awaitable, final T result) {
+    }
+
+    /**
+     * Called after a task resumes <i>exceptionally.</i>
+     *
+     * @param task      The task that is to be resumed.
+     * @param awaitable The awaitable that has just completed.
+     * @param error     The error that was thrown.
+     */
+    default void onResumeExceptionally(final Task<?> task, final Awaitable<?> awaitable, final Throwable error) {
+    }
 
     /**
      * A {@code CoroutineExecutor} that executes the continuation immediately on the current thread (eager execution).
