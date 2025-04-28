@@ -28,6 +28,7 @@ public interface Task<T> extends Awaitable<T> {
      *
      * @param executor The {@link CoroutineExecutor} to use for running this coroutine. The executor determines the
      *                 context  in which the coroutine is executed (e.g., on a particular thread, asynchronously, etc.).
+     * @return {@code this}
      */
     Task<T> begin(CoroutineExecutor executor);
 
@@ -37,6 +38,7 @@ public interface Task<T> extends Awaitable<T> {
      * This is a convenience method that starts the coroutine immediately on the current thread without scheduling it
      * asynchronously or on a different executor.
      *
+     * @return {@code this}
      * @see CoroutineExecutor#EAGER
      */
     default Task<T> begin() {

@@ -203,5 +203,7 @@ public class TestTask {
 
     public static void main(final String[] args) {
         runTests().begin();
+
+        System.out.println(runTests());
     }
 }

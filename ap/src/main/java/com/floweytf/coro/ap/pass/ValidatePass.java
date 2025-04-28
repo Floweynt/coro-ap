@@ -20,17 +20,15 @@ import java.util.Objects;
 
 public class ValidatePass extends TreeScanner {
     private static class MethodContext {
-        private final JCTree.JCMethodDecl method;
         private final CoroutineKind kind;
         private int syncBlockNest;
 
-        private MethodContext(final JCTree.JCMethodDecl method, final CoroutineKind kind) {
-            this.method = method;
+        private MethodContext(final CoroutineKind kind) {
             this.kind = kind;
         }
     }
 
-    private static final MethodContext NIL = new MethodContext(null, null);
+    private static final MethodContext NIL = new MethodContext(null);
 
     private final Deque<MethodContext> methodDeclContext = new ArrayDeque<>();
     private final Coroutines coroutines;
@@ -124,7 +122,7 @@ public class ValidatePass extends TreeScanner {
             coroutines.reportCoroutineMethod(tree, kind);
         }
 
-        methodDeclContext.push(new MethodContext(tree, kind));
+        methodDeclContext.push(new MethodContext(kind));
         super.visitMethodDef(tree);
         methodDeclContext.pop();
     }
@@ -194,7 +192,7 @@ public class ValidatePass extends TreeScanner {
 
     @Override
     public void visitLambda(final JCTree.JCLambda tree) {
-        methodDeclContext.push(NIL);
+        methodDeclContext.push(new MethodContext(CoroutineKind.NONE));
         super.visitLambda(tree);
         methodDeclContext.pop();
     }
@@ -213,6 +211,7 @@ public class ValidatePass extends TreeScanner {
         if (currentContext().kind == CoroutineKind.NONE) {
             return;
         }
+
         if (!(tree.expr instanceof final JCTree.JCMethodInvocation invocation)) {
             reportError(tree, "return is not allowed in Coroutine method; it must be used as `return Co.ret`");
             return;

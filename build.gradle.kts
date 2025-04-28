@@ -5,7 +5,7 @@ plugins {
 
 group = "com.floweytf.coro"
 
-val ver = "1.0-SNAPSHOT"
+val ver = "1.0.1-SNAPSHOT"
 version = ver
 
 allprojects {
@@ -22,14 +22,17 @@ allprojects {
         implementation("org.jetbrains:annotations:24.0.0")
     }
 
-    java {
-        withSourcesJar()
-        withJavadocJar()
-    }
-
     publishing {
         repositories {
             mavenLocal()
+        }
+
+        publishing {
+            publications {
+                create<MavenPublication>("maven") {
+                    from(components["java"])
+                }
+            }
         }
     }
 }

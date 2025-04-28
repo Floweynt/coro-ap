@@ -1,7 +1,3 @@
-repositories {
-    mavenCentral()
-}
-
 dependencies {
     implementation(libs.bundles.asm)
     implementation(libs.fastutil)
@@ -20,8 +16,5 @@ tasks.compileJava {
 java {
     sourceCompatibility = JavaVersion.VERSION_17
     targetCompatibility = JavaVersion.VERSION_17
-}
-
-tasks.test {
-    useJUnitPlatform()
+    withSourcesJar()
 }

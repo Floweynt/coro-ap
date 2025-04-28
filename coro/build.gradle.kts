@@ -1,11 +1,14 @@
-repositories {
-    mavenCentral()
-}
-
 dependencies {
     testAnnotationProcessor(project(":ap"))
 }
 
-tasks.test {
-    useJUnitPlatform()
+tasks {
+    test {
+        useJUnitPlatform()
+    }
+}
+
+java {
+    withSourcesJar()
+    withJavadocJar()
 }

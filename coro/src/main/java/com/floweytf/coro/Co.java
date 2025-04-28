@@ -5,7 +5,6 @@ import com.floweytf.coro.concepts.CoroutineExecutor;
 import com.floweytf.coro.concepts.Generator;
 import com.floweytf.coro.concepts.Task;
 import com.floweytf.coro.internal.DummyCoroReturnTypeWrapper;
-import java.util.Iterator;
 
 /**
  * A utility class that provides support for coroutine-like functionality in Java.
@@ -70,6 +69,7 @@ public class Co {
      * {@link AssertionError} with a message indicating that the annotation processor (AP) has not been properly
      * configured.
      *
+     * @param <T> The result-type of the coroutine.
      * @return A dummy value representing a void return type. This method does not return a meaningful value and
      * exists solely to pass compilation.
      * @throws AssertionError If called directly, indicating the AP is not set up.

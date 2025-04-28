@@ -1,10 +1,6 @@
 package com.floweytf.coro.ap.codegen;
 
 import com.floweytf.coro.ap.Constants;
-import static com.floweytf.coro.ap.Constants.CO_CLASS_BIN;
-import static com.floweytf.coro.ap.Constants.RET_KW;
-import static com.floweytf.coro.ap.Constants.THROWABLE_CLASS_BIN;
-import static com.floweytf.coro.ap.Constants.THROWABLE_TYPE;
 import com.floweytf.coro.ap.util.Util;
 import it.unimi.dsi.fastutil.objects.Object2IntArrayMap;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
@@ -37,13 +33,21 @@ import org.objectweb.asm.tree.TypeInsnNode;
 import org.objectweb.asm.tree.VarInsnNode;
 import org.objectweb.asm.util.TraceClassVisitor;
 
+import static com.floweytf.coro.ap.Constants.CO_CLASS_BIN;
+import static com.floweytf.coro.ap.Constants.RET_KW;
+import static com.floweytf.coro.ap.Constants.THROWABLE_CLASS_BIN;
+import static com.floweytf.coro.ap.Constants.THROWABLE_TYPE;
+
 public abstract class BasicMethodTransformer {
     protected static final int LVT_THIS = 0;
     protected static final int LVT_STATE = 1;
 
+    private final ClassNode coMethodOwner;
     private final MethodNode coMethod;
+
     private final ClassNode implClass;
     private final MethodNode implClassCons;
+    private final MethodNode implClassToString;
     private final MethodNode implMethod;
 
     private final List<Type> argTypes;
@@ -70,6 +74,7 @@ public abstract class BasicMethodTransformer {
                                      final int lvtScratch, final int lvtOffset,
                                      final Constants.MethodDesc handleException, final String superClass,
                                      final Constants.MethodDesc implMethodDesc) {
+        this.coMethodOwner = methodOwner;
         this.lvtScratch = lvtScratch;
         this.lvtOffset = lvtOffset;
         this.handleException = handleException;
@@ -83,6 +88,13 @@ public abstract class BasicMethodTransformer {
             null,
             coMethod.exceptions.toArray(String[]::new)
         );
+        this.implClassToString = new MethodNode(
+            Opcodes.ACC_PUBLIC,
+            "toString",
+            Type.getMethodDescriptor(Type.getType(String.class)),
+            null,
+            null
+        );
         this.implMethod = implMethodDesc.node(Opcodes.ACC_PROTECTED);
 
         // set up necessary attributes to recognize our generated class as an inner class
@@ -93,6 +105,7 @@ public abstract class BasicMethodTransformer {
         this.implClass.version = methodOwner.version;
         this.implClass.methods.add(implMethod);
         this.implClass.methods.add(implClassCons);
+        this.implClass.methods.add(implClassToString);
         this.implClass.sourceFile = methodOwner.sourceFile;
         this.implClass.nestHostClass = methodOwner.name;
         this.implClass.outerMethod = coMethod.name;
@@ -404,6 +417,26 @@ public abstract class BasicMethodTransformer {
         output.add(new InsnNode(Opcodes.RETURN));
     }
 
+    private void codegenToString() {
+        final var output = implClassToString.instructions;
+
+        // TODO: use signature
+        final var name = String.format(
+            "%s[%s %s%s%s(%s)]",
+            implClass.superName.substring(implClass.superName.lastIndexOf("/") + 1),
+            Type.getReturnType(coMethod.desc).getClassName(),
+            Type.getObjectType(coMethodOwner.name).getClassName(),
+            (coMethod.access & Opcodes.ACC_STATIC) != 0 ? "." : "#",
+            coMethod.name,
+            Arrays.stream(Type.getArgumentTypes(coMethod.desc))
+                .map(Type::getClassName)
+                .collect(Collectors.joining(", "))
+        );
+
+        output.add(new LdcInsnNode(name));
+        output.add(new InsnNode(Opcodes.ARETURN));
+    }
+
     private void codegenCoMethod() {
         final var output = new InsnList();
         coMethod.instructions = output;
@@ -435,6 +468,7 @@ public abstract class BasicMethodTransformer {
         codegenConstructor();
         codegenCoMethod();
         codegenFields();
+        codegenToString();
 
         if (Boolean.getBoolean("coro.debug")) {
             implClass.accept(new TraceClassVisitor(new PrintWriter(System.out)));

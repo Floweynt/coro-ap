@@ -8,8 +8,11 @@ import com.sun.tools.javac.code.Symbol;
 import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.util.Context;
 import com.sun.tools.javac.util.JavacMessages;
+import com.sun.tools.javac.util.Log;
 import com.sun.tools.javac.util.Names;
 import it.unimi.dsi.fastutil.Pair;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Enumeration;
@@ -22,6 +25,7 @@ import org.jetbrains.annotations.NotNull;
 public class Coroutines implements TaskListener {
     private final Context context;
     private final CoroNames coroNames;
+    private long compileTime;
 
     private final Map<Symbol, Pair<List<JCTree.JCMethodDecl>, List<JCTree.JCMethodDecl>>> coroutineMethods =
         new IdentityHashMap<>();
@@ -59,8 +63,37 @@ public class Coroutines implements TaskListener {
     @Override
     public void finished(final TaskEvent event) {
         switch (event.getKind()) {
-        case ANALYZE -> ((JCTree.JCCompilationUnit) event.getCompilationUnit()).accept(new ValidatePass(this, event));
-        case COMPILATION -> new TransformPass(this).process(coroutineMethods);
+        case ANALYZE -> {
+            try {
+                final var startTime = System.currentTimeMillis();
+                ((JCTree.JCCompilationUnit) event.getCompilationUnit()).accept(new ValidatePass(this, event));
+                final var finalTime = System.currentTimeMillis();
+                compileTime += finalTime - startTime;
+            } catch (final Throwable e) {
+                final var sw = new StringWriter();
+                e.printStackTrace(new PrintWriter(sw));
+                Log.instance(context).printRawLines(
+                    "[Coro] while parsing file %s: %s\n%s".formatted(
+                        event.getCompilationUnit().getSourceFile().getName(),
+                        e.getMessage(),
+                        sw
+                    )
+                );
+
+                // rethrow
+                throw e;
+            }
+        }
+        case COMPILATION -> {
+            Log.instance(context).printRawLines("[Coro] analysis time: %sms".formatted(compileTime));
+            compileTime = 0;
+
+            final var startTime = System.currentTimeMillis();
+            new TransformPass(this).process(coroutineMethods);
+            final var finalTime = System.currentTimeMillis();
+
+            Log.instance(context).printRawLines("[Coro] codegen time: %sms".formatted(finalTime - startTime));
+        }
         }
     }
 

@@ -115,16 +115,16 @@ public abstract class BasicTask<T> implements Task<T> {
         onComplete(tResult -> tResult.match(resume::submit, resume::submitError));
     }
 
-    protected static <T, U> void suspendHelper(final Awaitable<T> task, final BasicTask<U> self, final int target) {
-        task.suspend(self.getExecutor(), new Continuation<>() {
+    protected static <T, U> void suspendHelper(final Awaitable<T> awaitable, final BasicTask<U> self, final int state) {
+        awaitable.suspend(self.getExecutor(), new Continuation<>() {
             @Override
             public void submitError(final Throwable error) {
-                self.myExecutor.executeTask(() -> self.run(target, true, error));
+                self.myExecutor.executeTask(() -> self.run(state, true, error));
             }
 
             @Override
             public void submit(final T value) {
-                self.myExecutor.executeTask(() -> self.run(target, false, value));
+                self.myExecutor.executeTask(() -> self.run(state, false, value));
             }
         });
     }
