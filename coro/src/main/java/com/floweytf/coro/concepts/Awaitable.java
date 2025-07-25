@@ -47,5 +47,5 @@ public interface Awaitable<T> {
      * @param resume   A {@link Consumer} that accepts the result of the asynchronous task and resumes the coroutine
      *                 execution. The result is wrapped in a {@link Result} to handle both success and failure cases.
      */
-    void suspend(final CoroutineExecutor executor, Continuation<T> resume);
+    void execute(final CoroutineExecutor executor, Continuation<T> resume);
 }

@@ -30,20 +30,20 @@ import java.lang.annotation.Target;
  * Void coroutines still must explicitly return once control flow reaches the end of the method. These limitations
  * are designed to ensure easy IDE integration without the use of any plugins.
  * <br>
- * The execution of a coroutine is determined by the {@link CoroutineExecutor} it is
+ * The execution of a coroutine is determined by the {@link CoroutineExecutor} that the coroutine is
  * started with in {@link Task#begin()}. The simplest executor eagerly executes the task on the same thread as the
  * completion. That is, if an {@link Awaitable} chooses to resume the coroutine on some arbitrary thread, the
  * execution of the coroutine will follow that.
  * <pre>{@code
- * public Awaitable<Void> switchThread() {
- *     return consumer -> new Thread().run(consumer.accept(null));
- * }
+ * private static final Awaitable<Void> SWITCH_THREAD = (executor, resume) ->
+ *     new Thread(() -> resume.submit(null)).start();
  *
  * @Coroutine
- * public Task<Void> example() {
- *     System.out.println("Hello from main thread"); // <- runs on main thread
- *     Co.await(switchThread());
- *     System.out.println("Hello from new thread"); // <- runs on the newly created thread
+ * public static Task<Void> example() {
+ *     System.out.println("Hello from thread: " + Thread.currentThread().getName());
+ *     Co.await(SWITCH_THREAD);
+ *     System.out.println("Hello from thread: " + Thread.currentThread().getName());
+ *     return Co.ret();
  * }
  *
  * public static void main(String... args) {

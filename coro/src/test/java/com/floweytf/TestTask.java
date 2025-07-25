@@ -3,6 +3,7 @@ package com.floweytf;
 import com.floweytf.coro.Co;
 import com.floweytf.coro.annotations.Coroutine;
 import com.floweytf.coro.concepts.Awaitable;
+import com.floweytf.coro.concepts.Continuation;
 import com.floweytf.coro.concepts.Task;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -11,6 +12,11 @@ public class TestTask {
         () -> resume.submit(null),
         "hi"
     ).start();
+
+    private static final Awaitable<Void> PRINT_CALLEE_LOCATION_INFO = (executor, resume) -> {
+        System.out.println(((Continuation.Coroutine<Void>) resume).calleeLocation());
+        resume.submit(null);
+    };
 
     @Coroutine
     public static Task<Void> test0() {
@@ -85,7 +91,7 @@ public class TestTask {
         for (int i = 0; i < arg; i++) {
             System.out.println("Hello from thread: " + Thread.currentThread().getName());
             final int finalI = i;
-            Co.await((executor,  resume) -> new Thread(
+            Co.await((executor, resume) -> new Thread(
                 () -> resume.submit(null),
                 "hi " + finalI
             ).start());
@@ -125,7 +131,7 @@ public class TestTask {
     public static Task<Void> test11() {
         long value = 12;
 
-        if(Boolean.getBoolean("flag")) {
+        if (Boolean.getBoolean("flag")) {
             value = 11;
         } else {
             value = 13;
@@ -180,7 +186,9 @@ public class TestTask {
         Co.await(test10());
         Co.await(test8());
         Co.await(new TestTask().memberCo());
+        System.out.println("HERE");
         Co.await(test11());
+        Co.await(PRINT_CALLEE_LOCATION_INFO);
         Co.await(test12());
         Co.await(test13());
         try {
@@ -202,8 +210,9 @@ public class TestTask {
     }
 
     public static void main(final String[] args) {
-        runTests().begin();
+        runTests().begin().onComplete(System.out::println);
 
         System.out.println(runTests());
+        System.out.println(test5(0));
     }
 }

@@ -2,6 +2,8 @@ package com.floweytf.coro.ap.codegen;
 
 import com.floweytf.coro.ap.Constants;
 import com.floweytf.coro.ap.util.Util;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
+import it.unimi.dsi.fastutil.ints.IntList;
 import it.unimi.dsi.fastutil.objects.Object2IntArrayMap;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
@@ -22,6 +24,7 @@ import org.objectweb.asm.tree.IincInsnNode;
 import org.objectweb.asm.tree.InnerClassNode;
 import org.objectweb.asm.tree.InsnList;
 import org.objectweb.asm.tree.InsnNode;
+import org.objectweb.asm.tree.IntInsnNode;
 import org.objectweb.asm.tree.LabelNode;
 import org.objectweb.asm.tree.LdcInsnNode;
 import org.objectweb.asm.tree.LocalVariableNode;
@@ -31,8 +34,13 @@ import org.objectweb.asm.tree.TableSwitchInsnNode;
 import org.objectweb.asm.tree.TryCatchBlockNode;
 import org.objectweb.asm.tree.TypeInsnNode;
 import org.objectweb.asm.tree.VarInsnNode;
+import org.objectweb.asm.util.CheckClassAdapter;
 import org.objectweb.asm.util.TraceClassVisitor;
 
+import static com.floweytf.coro.ap.Constants.CLASS_TYPE_BIN;
+import static com.floweytf.coro.ap.Constants.CORO_METADATA_CLASS_BIN;
+import static com.floweytf.coro.ap.Constants.CORO_METADATA_CLASS_CTOR;
+import static com.floweytf.coro.ap.Constants.CORO_METADATA_CLASS_DESC;
 import static com.floweytf.coro.ap.Constants.CO_CLASS_BIN;
 import static com.floweytf.coro.ap.Constants.RET_KW;
 import static com.floweytf.coro.ap.Constants.THROWABLE_CLASS_BIN;
@@ -42,13 +50,24 @@ public abstract class BasicMethodTransformer {
     protected static final int LVT_THIS = 0;
     protected static final int LVT_STATE = 1;
 
+    private static boolean isCoMethod(final AbstractInsnNode node) {
+        if (!(node instanceof final MethodInsnNode methodInsnNode)) {
+            return false;
+        }
+
+        return node.getOpcode() == Opcodes.INVOKESTATIC && methodInsnNode.owner.equals(CO_CLASS_BIN);
+    }
+
     private final ClassNode coMethodOwner;
     private final MethodNode coMethod;
 
     private final ClassNode implClass;
     private final MethodNode implClassCons;
-    private final MethodNode implClassToString;
+    private final MethodNode implClassStaticCons;
     private final MethodNode implMethod;
+    private final MethodNode implSuspendPointMetadataGetter;
+
+    private final FieldNode suspendPointMetadataField;
 
     private final List<Type> argTypes;
     private final List<LabelNode> resumeLabels = new ArrayList<>();
@@ -60,6 +79,8 @@ public abstract class BasicMethodTransformer {
     private final Constants.MethodDesc handleException;
 
     private final Object[] initialLVTTypes;
+
+    private final IntList suspendPointLines = new IntArrayList();
 
     /**
      * A simple method transformer capable of handling coroutine methods.
@@ -88,14 +109,29 @@ public abstract class BasicMethodTransformer {
             null,
             coMethod.exceptions.toArray(String[]::new)
         );
-        this.implClassToString = new MethodNode(
-            Opcodes.ACC_PUBLIC,
-            "toString",
-            Type.getMethodDescriptor(Type.getType(String.class)),
+        this.implClassStaticCons = new MethodNode(
+            Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+            "<clinit>",
+            "()V",
             null,
             null
         );
         this.implMethod = implMethodDesc.node(Opcodes.ACC_PROTECTED);
+        this.implSuspendPointMetadataGetter = new MethodNode(
+            Opcodes.ACC_PROTECTED,
+            "getMetadata",
+            "()" + CORO_METADATA_CLASS_DESC,
+            null,
+            null
+        );
+
+        this.suspendPointMetadataField = new FieldNode(
+            Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_FINAL,
+            "METADATA",
+            CORO_METADATA_CLASS_DESC,
+            null,
+            null
+        );
 
         // set up necessary attributes to recognize our generated class as an inner class
         this.implClass.access = Opcodes.ACC_SUPER | Opcodes.ACC_SYNTHETIC;
@@ -105,7 +141,9 @@ public abstract class BasicMethodTransformer {
         this.implClass.version = methodOwner.version;
         this.implClass.methods.add(implMethod);
         this.implClass.methods.add(implClassCons);
-        this.implClass.methods.add(implClassToString);
+        this.implClass.methods.add(implClassStaticCons);
+        this.implClass.methods.add(implSuspendPointMetadataGetter);
+        this.implClass.fields.add(suspendPointMetadataField);
         this.implClass.sourceFile = methodOwner.sourceFile;
         this.implClass.nestHostClass = methodOwner.name;
         this.implClass.outerMethod = coMethod.name;
@@ -126,14 +164,6 @@ public abstract class BasicMethodTransformer {
         for (int i = 0; i < implMethodDesc.arguments().length; i++) {
             initialLVTTypes[i + 1] = Util.typeToFrameType(implMethodDesc.arguments()[i]);
         }
-    }
-
-    private static boolean isCoMethod(final AbstractInsnNode node) {
-        if (!(node instanceof final MethodInsnNode methodInsnNode)) {
-            return false;
-        }
-
-        return node.getOpcode() == Opcodes.INVOKESTATIC && methodInsnNode.owner.equals(CO_CLASS_BIN);
     }
 
     protected FrameNode createNode(final Object... stack) {
@@ -170,9 +200,7 @@ public abstract class BasicMethodTransformer {
                 resumeInstr.add(new InsnNode(Opcodes.ACONST_NULL));
                 resumeInstr.add(new VarInsnNode(Opcodes.ASTORE, remapLVT(localIndex)));
             } else if (!isInit) { // handle uninitialized reference type
-                output.add(new InsnNode(Opcodes.POP));
-                resumeInstr.add(new TypeInsnNode(Opcodes.NEW, type.getInternalName()));
-                resumeInstr.add(new VarInsnNode(Opcodes.ASTORE, remapLVT(localIndex)));
+                throw new AssertionError("uninitialize type in LVT not supported");
             } else {
                 final var fieldNum = fieldAllocator.getOrAllocateFieldId(type, allocMap);
 
@@ -198,26 +226,33 @@ public abstract class BasicMethodTransformer {
 
         if (frame.stack.size() > 1) {
             output.add(new VarInsnNode(Opcodes.ASTORE, lvtScratch));
-            Util.forEachStack(frame, 1, (type, isInit) -> {
-                if (type == null) { // handle the null literal type
+            Util.forEachStack(frame, 1, (arg) -> {
+                if (arg instanceof Util.StackEntry.Null) {
                     output.add(new InsnNode(Opcodes.POP));
                     resumeReversed.add(new InsnNode(Opcodes.ACONST_NULL));
-                } else if (!isInit) { // handle uninitialized reference type
-                    output.add(new InsnNode(Opcodes.POP));
-                    resumeReversed.add(new TypeInsnNode(Opcodes.NEW, type.getInternalName()));
-                } else {
-                    final var fieldId = fieldAllocator.getOrAllocateFieldId(type, allocMap);
+                } else if (arg instanceof final Util.StackEntry.Uninitialized uninitialized) {
+                    for(int i = 0; i < uninitialized.count(); i++) {
+                        output.add(new InsnNode(Opcodes.POP));
+                    }
+
+                    for(int i = 0; i < uninitialized.count() - 1; i++) {
+                        resumeReversed.add(new InsnNode(Opcodes.DUP));
+                    }
+
+                    resumeReversed.add(new TypeInsnNode(Opcodes.NEW, uninitialized.type().getInternalName()));
+                } else if (arg instanceof final Util.StackEntry.Regular regular){
+                    final var fieldId = fieldAllocator.getOrAllocateFieldId(regular.type(), allocMap);
                     output.add(new VarInsnNode(Opcodes.ALOAD, LVT_THIS));
-                    if (type.getSize() == 2) {
+                    if (regular.type().getSize() == 2) {
                         output.add(new InsnNode(Opcodes.DUP_X2));
                     } else {
                         output.add(new InsnNode(Opcodes.DUP_X1));
                     }
                     output.add(new InsnNode(Opcodes.POP));
-                    output.add(scratchField(Opcodes.PUTFIELD, fieldId, type));
+                    output.add(scratchField(Opcodes.PUTFIELD, fieldId, regular.type()));
 
                     // reverse order
-                    resumeReversed.add(scratchField(Opcodes.GETFIELD, fieldId, type));
+                    resumeReversed.add(scratchField(Opcodes.GETFIELD, fieldId, regular.type()));
                     resumeReversed.add(new VarInsnNode(Opcodes.ALOAD, LVT_THIS));
                 }
             });
@@ -232,7 +267,17 @@ public abstract class BasicMethodTransformer {
         };
     }
 
-    protected final void genSuspendPoint(final MethodInsnNode originalMethod) {
+    private void handleSuspendPointMetadata(final String name) {
+        final var argStart = name.indexOf("@");
+
+        if (argStart == -1) {
+            suspendPointLines.add(-1);
+        }
+
+        suspendPointLines.add(Integer.parseInt(name.substring(argStart + 1)));
+    }
+
+    protected final void genSuspendPoint(final MethodInsnNode node) {
         final var output = implMethod.instructions;
         final var allocMap = new Object2IntArrayMap<Type>();
         final var resumeLabel = new LabelNode();
@@ -240,10 +285,14 @@ public abstract class BasicMethodTransformer {
         final var resumeLocal = suspendSaveLocals(analyzer, allocMap);
         final var resumeStack = suspendSaveStack(analyzer, allocMap);
 
+        final var suspendPointId = resumeLabels.size();
+
         output.add(new VarInsnNode(Opcodes.ALOAD, LVT_THIS));
-        output.add(new LdcInsnNode(resumeLabels.size()));
-        genReportSuspend(output, originalMethod);
+        output.add(new LdcInsnNode(suspendPointId));
+        genReportSuspend(output, node);
         output.add(new InsnNode(Opcodes.RETURN));
+
+        handleSuspendPointMetadata(node.name);
 
         output.add(resumeLabel);
 
@@ -258,7 +307,7 @@ public abstract class BasicMethodTransformer {
         resumeLabels.add(resumeLabel);
     }
 
-    private void genImplMethod() {
+    private void codegenImplMethod() {
         final var output = implMethod.instructions;
         final var labelCloner = new Object2ObjectOpenHashMap<LabelNode, LabelNode>() {
             @Override
@@ -417,23 +466,61 @@ public abstract class BasicMethodTransformer {
         output.add(new InsnNode(Opcodes.RETURN));
     }
 
-    private void codegenToString() {
-        final var output = implClassToString.instructions;
+    private void codegenStaticConstructor() {
+        final var output = implClassStaticCons.instructions;
 
-        // TODO: use signature
-        final var name = String.format(
-            "%s[%s %s%s%s(%s)]",
-            implClass.superName.substring(implClass.superName.lastIndexOf("/") + 1),
-            Type.getReturnType(coMethod.desc).getClassName(),
-            Type.getObjectType(coMethodOwner.name).getClassName(),
-            (coMethod.access & Opcodes.ACC_STATIC) != 0 ? "." : "#",
-            coMethod.name,
-            Arrays.stream(Type.getArgumentTypes(coMethod.desc))
-                .map(Type::getClassName)
-                .collect(Collectors.joining(", "))
-        );
+        output.add(new TypeInsnNode(Opcodes.NEW, CORO_METADATA_CLASS_BIN));
+        output.add(new InsnNode(Opcodes.DUP));
 
-        output.add(new LdcInsnNode(name));
+        output.add(new LdcInsnNode(Type.getObjectType(coMethodOwner.name)));
+        output.add(new LdcInsnNode(coMethod.access));
+        output.add(new LdcInsnNode(coMethod.name));
+
+        final var desc = Type.getArgumentTypes(coMethod.desc);
+
+        output.add(new LdcInsnNode(desc.length));
+        output.add(new TypeInsnNode(Opcodes.ANEWARRAY, CLASS_TYPE_BIN));
+
+        for (int i = 0; i < desc.length; i++) {
+            output.add(new InsnNode(Opcodes.DUP));
+            output.add(new LdcInsnNode(i));
+            output.add(Util.ldc(desc[i]));
+            output.add(new InsnNode(Opcodes.AASTORE));
+        }
+
+        output.add(Util.ldc(coMethodOwner.sourceFile));
+
+        output.add(new LdcInsnNode(suspendPointLines.size()));
+        output.add(new IntInsnNode(Opcodes.NEWARRAY, Opcodes.T_INT));
+
+        for (int i = 0; i < suspendPointLines.size(); i++) {
+            output.add(new InsnNode(Opcodes.DUP));
+            output.add(new LdcInsnNode(i));
+            output.add(new LdcInsnNode(suspendPointLines.getInt(i)));
+            output.add(new InsnNode(Opcodes.IASTORE));
+        }
+
+        output.add(CORO_METADATA_CLASS_CTOR.instr(Opcodes.INVOKESPECIAL));
+
+        output.add(new FieldInsnNode(
+            Opcodes.PUTSTATIC,
+            implClass.name,
+            suspendPointMetadataField.name,
+            suspendPointMetadataField.desc
+        ));
+
+        output.add(new InsnNode(Opcodes.RETURN));
+    }
+
+    private void codegenSuspendPointMetadataGetter() {
+        final var output = implSuspendPointMetadataGetter.instructions;
+
+        output.add(new FieldInsnNode(
+            Opcodes.GETSTATIC,
+            implClass.name,
+            suspendPointMetadataField.name,
+            suspendPointMetadataField.desc
+        ));
         output.add(new InsnNode(Opcodes.ARETURN));
     }
 
@@ -464,14 +551,15 @@ public abstract class BasicMethodTransformer {
     }
 
     public final ClassNode generate() {
-        genImplMethod();
+        codegenImplMethod();
         codegenConstructor();
+        codegenStaticConstructor();
         codegenCoMethod();
         codegenFields();
-        codegenToString();
+        codegenSuspendPointMetadataGetter();
 
         if (Boolean.getBoolean("coro.debug")) {
-            implClass.accept(new TraceClassVisitor(new PrintWriter(System.out)));
+            implClass.accept(new CheckClassAdapter(new TraceClassVisitor(new PrintWriter(System.out))));
         }
 
         return implClass;

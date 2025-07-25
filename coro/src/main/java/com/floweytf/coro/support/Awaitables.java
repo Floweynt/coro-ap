@@ -70,7 +70,7 @@ public class Awaitables {
     public static <T> CompletableFuture<T> future(final CoroutineExecutor executor, final Awaitable<T> awaitable) {
         final var future = new CompletableFuture<T>();
 
-        awaitable.suspend(executor, new Continuation<>() {
+        awaitable.execute(executor, new Continuation<>() {
             @Override
             public void submitError(final Throwable error) {
                 future.completeExceptionally(error);

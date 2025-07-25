@@ -7,10 +7,14 @@ import com.floweytf.coro.concepts.Task;
 import com.floweytf.coro.support.Result;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
+import java.lang.module.ModuleDescriptor;
+import java.lang.reflect.Modifier;
+import java.util.Arrays;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 import org.jetbrains.annotations.ApiStatus;
 
-@SuppressWarnings({"unchecked", "rawtypes"})
+@SuppressWarnings({"unchecked", "rawtypes", "unused", "FieldMayBeFinal"})
 @ApiStatus.Internal
 public abstract class BasicTask<T> implements Task<T> {
     private static final class Entry<T> {
@@ -22,19 +26,83 @@ public abstract class BasicTask<T> implements Task<T> {
         }
     }
 
+    private static final class ResumeContinuation<T> implements Continuation.Coroutine<T> {
+        private final Awaitable<T> awaitable;
+        private final BasicTask<T> self;
+        private final int resumeState;
+
+        private boolean flag;
+
+        private ResumeContinuation(final Awaitable<T> awaitable, final BasicTask<T> self, final int resumeState) {
+            this.awaitable = awaitable;
+            this.self = self;
+            this.resumeState = resumeState;
+        }
+
+        private void resumeCommon() {
+            if ((boolean) RESUME_CONTINUATION_FLAG.getAndSet(this, true)) {
+                throw new IllegalStateException("Coroutine may not be resumed twice on the same suspension point!");
+            }
+
+            self.suspendPointId = -1;
+            self.currentAwaitable = null;
+        }
+
+        @Override
+        public void submitError(final Throwable error) {
+            resumeCommon();
+            self.getExecutor().onResumeExceptionally(self, awaitable, error);
+            self.myExecutor.executeTask(() -> self.run(resumeState, true, error));
+        }
+
+        @Override
+        public void submit(final T value) {
+            resumeCommon();
+            self.getExecutor().onResume(self, awaitable, value);
+            self.myExecutor.executeTask(() -> self.run(resumeState, false, value));
+        }
+
+        @Override
+        public Task<T> theTask() {
+            return self;
+        }
+
+        @Override
+        public StackTraceElement calleeLocation() {
+            // String classLoaderName, String moduleName, String moduleVersion, String declaringClass, String
+            // methodName, String fileName, int lineNumber
+
+            final var declaringClass = self.getMetadata().declaringClass();
+            final var moduleDesc = declaringClass.getModule().getDescriptor();
+
+            return new StackTraceElement(
+                declaringClass.getClassLoader().getName(),
+                declaringClass.getModule().getName(),
+                moduleDesc != null ? moduleDesc.version().map(ModuleDescriptor.Version::toString).orElse(null) : null,
+                declaringClass.getName(),
+                self.getMetadata().methodName(),
+                self.getMetadata().fileName(),
+                self.getMetadata().suspendPointLineNo()[resumeState - 1]
+            );
+        }
+    }
+
     private static final Entry NIL = new Entry<>(ignored -> {
     });
 
-    @SuppressWarnings("FieldMayBeFinal")
     private volatile Entry<T> completeStack = NIL;
-    @SuppressWarnings("unused")
     private volatile CoroutineExecutor myExecutor;
-    @SuppressWarnings("unused")
     private volatile Result<T> result;
 
     private static final VarHandle COMPLETE_STACK;
     private static final VarHandle MY_EXECUTOR;
     private static final VarHandle RESULT;
+    private static final VarHandle RESUME_CONTINUATION_FLAG;
+
+    private int suspendPointId = -1;
+    private Awaitable<?> currentAwaitable;
+
+    // info about the current suspend points
 
     static {
         final var lookup = MethodHandles.lookup();
@@ -43,6 +111,7 @@ public abstract class BasicTask<T> implements Task<T> {
             COMPLETE_STACK = lookup.findVarHandle(BasicTask.class, "completeStack", Entry.class);
             MY_EXECUTOR = lookup.findVarHandle(BasicTask.class, "myExecutor", CoroutineExecutor.class);
             RESULT = lookup.findVarHandle(BasicTask.class, "result", Result.class);
+            RESUME_CONTINUATION_FLAG = lookup.findVarHandle(ResumeContinuation.class, "flag", boolean.class);
         } catch (final NoSuchFieldException | IllegalAccessException e) {
             throw new RuntimeException(e);
         }
@@ -110,29 +179,18 @@ public abstract class BasicTask<T> implements Task<T> {
     }
 
     @Override
-    public void suspend(final CoroutineExecutor executor, final Continuation<T> resume) {
+    public void execute(final CoroutineExecutor executor, final Continuation<T> resume) {
         begin(executor);
         onComplete(tResult -> tResult.match(resume::submit, resume::submitError));
     }
 
-    protected static <T, U> void suspendHelper(final Awaitable<T> awaitable, final BasicTask<U> self, final int state) {
-        final var executor = self.getExecutor();
+    protected static <T, U> void suspendHelper(final Awaitable<T> awaitable, final BasicTask<U> self,
+                                               final int resumeState) {
+        self.suspendPointId = resumeState;
+        self.currentAwaitable = awaitable;
 
-        executor.onSuspend(self, awaitable);
-
-        awaitable.suspend(self.getExecutor(), new Continuation<>() {
-            @Override
-            public void submitError(final Throwable error) {
-                executor.onResumeExceptionally(self, awaitable, error);
-                self.myExecutor.executeTask(() -> self.run(state, true, error));
-            }
-
-            @Override
-            public void submit(final T value) {
-                executor.onResume(self, awaitable, value);
-                self.myExecutor.executeTask(() -> self.run(state, false, value));
-            }
-        });
+        self.getExecutor().onSuspend(self, awaitable);
+        awaitable.execute(self.getExecutor(), new ResumeContinuation(awaitable, self, resumeState));
     }
 
     protected static <T> void completeSuccess(final T val, final BasicTask<T> self) {
@@ -147,5 +205,18 @@ public abstract class BasicTask<T> implements Task<T> {
         return (CoroutineExecutor) MY_EXECUTOR.get(this);
     }
 
+    protected abstract CoroutineMetadata getMetadata();
+
     protected abstract void run(int state, boolean isExceptional, Object resVal);
+
+    @Override
+    public String toString() {
+        final var meta = getMetadata();
+        return "Task[%s %s.%s(%s)]".formatted(
+            Modifier.toString(meta.access()),
+            getMetadata().declaringClass().getSimpleName(),
+            getMetadata().methodName(),
+            Arrays.stream(getMetadata().argTypes()).map(Class::getSimpleName).collect(Collectors.joining(", "))
+        );
+    }
 }

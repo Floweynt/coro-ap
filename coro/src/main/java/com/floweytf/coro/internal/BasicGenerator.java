@@ -12,8 +12,8 @@ import org.jetbrains.annotations.NotNull;
 public abstract class BasicGenerator<T> implements Generator<T> {
     private static class GeneratorIterator<T> implements Iterator<T> {
         @SuppressWarnings("unchecked")
-        private static <E extends Throwable> void sneakyThrow(Throwable e) throws E {
-            throw (E) e;
+        private static <E extends Throwable> void sneakyThrow(final Throwable ex) throws E {
+            throw (E) ex;
         }
 
         private final Stack<BasicGenerator<T>> generators = new Stack<>();

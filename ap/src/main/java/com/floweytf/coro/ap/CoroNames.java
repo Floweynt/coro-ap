@@ -4,6 +4,7 @@ import com.sun.tools.javac.util.Name;
 import com.sun.tools.javac.util.Names;
 
 public record CoroNames(
+    Names names,
     Name coroutineAnnotationName,
     Name coClassName,
     Name taskClassName,
@@ -15,6 +16,7 @@ public record CoroNames(
 ) {
     CoroNames(final Names names) {
         this(
+            names,
             names.fromString(Constants.COROUTINE_ANN),
             names.fromString(Constants.CO_CLASS),
             names.fromString(Constants.TASK_CLASS),

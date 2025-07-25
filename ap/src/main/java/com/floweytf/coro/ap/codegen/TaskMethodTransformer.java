@@ -79,7 +79,7 @@ public class TaskMethodTransformer extends BasicMethodTransformer {
 
     @Override
     protected void handleCoMethod(final InsnList output, final MethodInsnNode methodInstr) {
-        if (methodInstr.name.equals(AWAIT_KW)) {
+        if (methodInstr.name.startsWith(AWAIT_KW)) {
             genSuspendPoint(methodInstr);
         } else if (methodInstr.name.equals(CURRENT_EXECUTOR_KW)) {
             output.add(new VarInsnNode(Opcodes.ALOAD, LVT_THIS));

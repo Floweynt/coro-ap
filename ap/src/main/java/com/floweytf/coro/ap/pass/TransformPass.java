@@ -23,6 +23,7 @@ import javax.tools.StandardLocation;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.MethodNode;
+import org.objectweb.asm.util.CheckClassAdapter;
 
 public class TransformPass {
     private static class SigGenerator extends Types.SignatureGenerator {

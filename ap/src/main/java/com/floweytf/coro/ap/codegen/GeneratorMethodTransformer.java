@@ -71,7 +71,7 @@ public class GeneratorMethodTransformer extends BasicMethodTransformer {
 
     @Override
     protected void handleCoMethod(final InsnList output, final MethodInsnNode methodInstr) {
-        if (methodInstr.name.equals(YIELD_KW)) {
+        if (methodInstr.name.startsWith(YIELD_KW)) {
             genSuspendPoint(methodInstr);
         } else {
             throw new AssertionError("illegal Co.<method> " + methodInstr.name);

@@ -13,12 +13,18 @@ import org.objectweb.asm.Label;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.commons.AnalyzerAdapter;
+import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.InsnList;
+import org.objectweb.asm.tree.InsnNode;
 import org.objectweb.asm.tree.LabelNode;
+import org.objectweb.asm.tree.LdcInsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.VarInsnNode;
+
+import static com.floweytf.coro.ap.Constants.CLASS_TYPE_DESC;
 
 public class Util {
     @FunctionalInterface
@@ -31,9 +37,24 @@ public class Util {
         void accept(int index, Type type);
     }
 
+    public sealed interface StackEntry permits StackEntry.Null, StackEntry.Regular, StackEntry.Uninitialized {
+        Null NULL = new Null();
+
+        final class Null implements StackEntry {
+            private Null() {
+            }
+        }
+
+        record Regular(Type type) implements StackEntry {
+        }
+
+        record Uninitialized(Type type, int count) implements StackEntry {
+        }
+    }
+
     @FunctionalInterface
     public interface StackHandler {
-        void accept(@Nullable Type type, boolean isInit);
+        void accept(StackEntry entry);
     }
 
     public static boolean isStatic(final MethodNode node) {
@@ -81,19 +102,27 @@ public class Util {
             }
 
             if (stack == Opcodes.INTEGER) {
-                handler.accept(Type.INT_TYPE, true);
+                handler.accept(new StackEntry.Regular(Type.INT_TYPE));
             } else if (stack == Opcodes.FLOAT) {
-                handler.accept(Type.FLOAT_TYPE, true);
+                handler.accept(new StackEntry.Regular(Type.FLOAT_TYPE));
             } else if (stack == Opcodes.LONG) {
-                handler.accept(Type.LONG_TYPE, true);
+                handler.accept(new StackEntry.Regular(Type.LONG_TYPE));
             } else if (stack == Opcodes.DOUBLE) {
-                handler.accept(Type.DOUBLE_TYPE, true);
+                handler.accept(new StackEntry.Regular(Type.DOUBLE_TYPE));
             } else if (stack == Opcodes.NULL) {
-                handler.accept(null, true);
+                handler.accept(StackEntry.NULL);
             } else if (stack instanceof final String name) {
-                handler.accept(Type.getObjectType(name), true);
+                handler.accept(new StackEntry.Regular(Type.getObjectType(name)));
             } else if (stack instanceof final Label label) {
-                handler.accept(Type.getObjectType((String) frame.uninitializedTypes.get(label)), false);
+                int count = 0;
+                for (; i >= 0 && frame.stack.get(i) instanceof final Label l && l == label; i--) {
+                    count++;
+                }
+
+                handler.accept(new StackEntry.Uninitialized(
+                    Type.getObjectType((String) frame.uninitializedTypes.get(label)),
+                    count
+                ));
             } else {
                 throw new IllegalStateException("not implemented");
             }
@@ -177,5 +206,31 @@ public class Util {
 
     public static MethodInsnNode invokeInstr(final int opc, final ClassNode owner, final MethodNode node) {
         return new MethodInsnNode(opc, owner.name, node.name, node.desc);
+    }
+
+    private static AbstractInsnNode primitiveType(final Class<?> clazz) {
+        return new FieldInsnNode(Opcodes.GETSTATIC, Type.getInternalName(clazz), "TYPE", CLASS_TYPE_DESC);
+    }
+
+    public static AbstractInsnNode ldc(final Object constant) {
+        if (constant == null) {
+            return new InsnNode(Opcodes.ACONST_NULL);
+        }
+
+        if (constant instanceof final Type type) {
+            return switch (type.getSort()) {
+                case Type.BOOLEAN -> primitiveType(Boolean.class);
+                case Type.CHAR -> primitiveType(Character.class);
+                case Type.BYTE -> primitiveType(Byte.class);
+                case Type.SHORT -> primitiveType(Short.class);
+                case Type.INT -> primitiveType(Integer.class);
+                case Type.FLOAT -> primitiveType(Float.class);
+                case Type.LONG -> primitiveType(Long.class);
+                case Type.DOUBLE -> primitiveType(Double.class);
+                default -> new LdcInsnNode(constant);
+            };
+        }
+
+        return new LdcInsnNode(constant);
     }
 }

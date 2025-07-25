@@ -8,6 +8,7 @@ import com.sun.source.util.TaskEvent;
 import com.sun.tools.javac.code.Flags;
 import com.sun.tools.javac.code.Symbol;
 import com.sun.tools.javac.code.Type;
+import com.sun.tools.javac.file.PathFileObject;
 import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.tree.TreeScanner;
 import com.sun.tools.javac.util.DiagnosticSource;
@@ -17,6 +18,7 @@ import com.sun.tools.javac.util.Name;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.Objects;
+import java.util.function.UnaryOperator;
 
 public class ValidatePass extends TreeScanner {
     private static class MethodContext {
@@ -144,6 +146,12 @@ public class ValidatePass extends TreeScanner {
 
     @Override
     public void visitApply(final JCTree.JCMethodInvocation tree) {
+        // visit children first
+        final var oldLastReturn = lastReturn;
+        lastReturn = null;
+        super.visitApply(tree);
+        lastReturn = oldLastReturn;
+
         final Symbol symbol = getMethodSymbol(tree.meth);
 
         if (symbol == null) {
@@ -175,6 +183,7 @@ public class ValidatePass extends TreeScanner {
                 if (methodContext.syncBlockNest > 0) {
                     reportError(tree.meth, "Co.yield() cannot be used in a synchronized block");
                 }
+                encodeSuspensionPointData(tree.meth, tree);
             } else {
                 reportError(tree.meth, "This Co#<method> cannot be used in a generator");
             }
@@ -183,8 +192,8 @@ public class ValidatePass extends TreeScanner {
                 if (methodContext.syncBlockNest > 0) {
                     reportError(tree.meth, "Co.await() cannot be used in a synchronized block");
                 }
-            } else if (symbol.name == names.currentExecutorName()) {
-            } else {
+                encodeSuspensionPointData(tree.meth, tree);
+            } else if (symbol.name != names.currentExecutorName()) {
                 reportError(tree.meth, "This Co#<method> cannot be used in a task");
             }
         }
@@ -205,6 +214,26 @@ public class ValidatePass extends TreeScanner {
             symbol = fieldAccess.sym;
         }
         return symbol;
+    }
+
+    // this is a bit of a janky workaround that only exists because we have no other way of passing data
+    // into the code generator :/
+    private void encodeSuspensionPointData(final JCTree.JCExpression expression, final JCTree tree) {
+        final UnaryOperator<Symbol> mapper = symbol -> {
+            final var mSym = (Symbol.MethodSymbol) symbol;
+
+            return new Symbol.MethodSymbol(
+                mSym.flags_field,
+                names.names().fromString(mSym.name.toString() + "@" + source.getLineNumber(tree.pos)),
+                mSym.type, mSym.owner
+            );
+        };
+
+        if (expression instanceof final JCTree.JCIdent ident) {
+            ident.sym = mapper.apply(ident.sym);
+        } else if (expression instanceof final JCTree.JCFieldAccess fieldAccess) {
+            fieldAccess.sym = mapper.apply(fieldAccess.sym);
+        }
     }
 
     private void validateReturn(final JCTree.JCReturn tree) {

@@ -33,6 +33,8 @@ public class Constants {
     public static final String BASIC_TASK_CLASS = "com.floweytf.coro.internal.BasicTask";
     public static final String BASIC_GENERATOR_CLASS = "com.floweytf.coro.internal.BasicGenerator";
     public static final String COROUTINE_EXECUTOR_CLASS = "com.floweytf.coro.concepts.CoroutineExecutor";
+    public static final String CORO_METADATA_CLASS = "com.floweytf.coro.internal.CoroutineMetadata";
+
     public static final String AWAIT_KW = "await";
     public static final String YIELD_KW = "yield";
     public static final String RET_KW = "ret";
@@ -40,10 +42,32 @@ public class Constants {
 
     public static final Type OBJECT_TYPE = Type.getType(Object.class);
     public static final Type THROWABLE_TYPE = Type.getType(Throwable.class);
+    public static final Type STRING_TYPE = Type.getType(String.class);
+    public static final Type CLASS_TYPE = Type.getType(Class.class);
 
-    public static final String COROUTINE_ANN_BIN = COROUTINE_ANN.replace('.', '/');
+    public static final String CLASS_TYPE_BIN = CLASS_TYPE.getInternalName();
     public static final String CO_CLASS_BIN = CO_CLASS.replace('.', '/');
     public static final String BASIC_TASK_CLASS_BIN = BASIC_TASK_CLASS.replace('.', '/');
+    public static final String CORO_METADATA_CLASS_BIN = CORO_METADATA_CLASS.replace('.', '/');
+    public static final String OBJECT_CLASS_BIN = OBJECT_TYPE.getInternalName();
+    public static final String THROWABLE_CLASS_BIN = THROWABLE_TYPE.getInternalName();
+
+    public static final String CLASS_TYPE_DESC = CLASS_TYPE.getDescriptor();
+    public static final String CORO_METADATA_CLASS_DESC = "L" + CORO_METADATA_CLASS_BIN + ";";
+
+    // public SuspensionPointMetadata(int, String)
+    public static final MethodDesc CORO_METADATA_CLASS_CTOR = new MethodDesc(
+        CORO_METADATA_CLASS_BIN,
+        "<init>",
+        Type.VOID_TYPE,
+        CLASS_TYPE,
+        Type.INT_TYPE,
+        STRING_TYPE,
+        Type.getType(Class[].class),
+        STRING_TYPE,
+        Type.getType(int[].class)
+    );
+
     // protected static <T> void completeSuccess(T val, BasicTask<T> self)
     public static final MethodDesc BASIC_TASK_COMPLETE_SUCCESS = new MethodDesc(
         BASIC_TASK_CLASS_BIN,
@@ -127,6 +151,4 @@ public class Constants {
         "getExecutor",
         Type.getObjectType(COROUTINE_EXECUTOR_CLASS_BIN)
     );
-    public static final String OBJECT_CLASS_BIN = OBJECT_TYPE.getInternalName();
-    public static final String THROWABLE_CLASS_BIN = THROWABLE_TYPE.getInternalName();
 }

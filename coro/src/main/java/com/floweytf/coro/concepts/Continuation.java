@@ -23,10 +23,9 @@ public interface Continuation<T> {
      */
     void submit(T value);
 
-    /**
-     * Cancels the coroutine, equivalent to {@code submitError(new InterruptedException())}.
-     */
-    default void cancel() {
-        submitError(new InterruptedException());
+    interface Coroutine<T> extends Continuation<T> {
+        Task<T> theTask();
+
+        StackTraceElement calleeLocation();
     }
 }

@@ -1,5 +1,5 @@
 [versions]
-asm = "9.7.1"
+asm = "9.8"
 fastutil = "8.5.15"
 
 [libraries]
