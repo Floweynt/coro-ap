@@ -5,7 +5,7 @@ plugins {
 
 group = "com.floweytf.coro"
 
-val ver = "1.0.1-SNAPSHOT"
+val ver = "0.0.1-SNAPSHOT"
 version = ver
 
 allprojects {
