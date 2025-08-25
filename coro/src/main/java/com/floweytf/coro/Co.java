@@ -2,9 +2,7 @@ package com.floweytf.coro;
 
 import com.floweytf.coro.concepts.Awaitable;
 import com.floweytf.coro.concepts.CoroutineExecutor;
-import com.floweytf.coro.concepts.Generator;
 import com.floweytf.coro.concepts.Task;
-import com.floweytf.coro.internal.DummyCoroReturnTypeWrapper;
 
 /**
  * A utility class that provides support for coroutine-like functionality in Java.
@@ -30,38 +28,6 @@ public class Co {
     }
 
     /**
-     * Simulates the {@code co_yield} keyword by providing a placeholder method that throws an {@link AssertionError}
-     * if called directly.
-     *
-     * <p>This method is used in place of the {@code co_yield} keyword in coroutine code. When called, it throws an
-     * {@link AssertionError} with a message indicating that the annotation processor (AP) has not been properly
-     * configured.
-     *
-     * @param value The value to "yield". This parameter is not used directly.
-     * @param <T>   The type of the value being yielded.
-     * @throws AssertionError If called directly, indicating the AP is not set up.
-     */
-    public static <T> void yield(final T value) {
-        throw new AssertionError("Co.yield(T) should never be called directly; have you set up the AP properly?");
-    }
-
-    /**
-     * Simulates the {@code co_yield} keyword by providing a placeholder method that throws an {@link AssertionError}
-     * if called directly.
-     *
-     * <p>This method is used in place of the {@code co_yield} keyword in coroutine code. When called, it throws an
-     * {@link AssertionError} with a message indicating that the annotation processor (AP) has not been properly
-     * configured.
-     *
-     * @param value The value to "yield". This parameter is not used directly.
-     * @param <T>   The type of the value being yielded.
-     * @throws AssertionError If called directly, indicating the AP is not set up.
-     */
-    public static <T> void yield(final Generator<T> value) {
-        throw new AssertionError("Co.yield(T) should never be called directly; have you set up the AP properly?");
-    }
-
-    /**
      * Simulates the {@code co_return} keyword by providing a placeholder method that returns a dummy value for void
      * return types. This method throws an {@link AssertionError} if called directly.
      *
@@ -74,7 +40,7 @@ public class Co {
      * exists solely to pass compilation.
      * @throws AssertionError If called directly, indicating the AP is not set up.
      */
-    public static <T> DummyCoroReturnTypeWrapper<T> ret() {
+    public static <T> Task<T> ret() {
         throw new AssertionError("Co.ret() should never be called directly; have you set up the AP properly?");
     }
 
@@ -126,6 +92,10 @@ public class Co {
      */
     public static CoroutineExecutor currentExecutor() {
         throw new AssertionError("Co.currentExecutor() should never be called directly; have you set up the AP properly?");
+    }
+
+    public static <T> T coroutine(final T lambdaExpr) {
+        return lambdaExpr;
     }
 }
 

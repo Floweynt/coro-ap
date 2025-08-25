@@ -10,15 +10,15 @@ import com.sun.tools.javac.util.Context;
 import com.sun.tools.javac.util.JavacMessages;
 import com.sun.tools.javac.util.Log;
 import com.sun.tools.javac.util.Names;
-import it.unimi.dsi.fastutil.Pair;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
+import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
+import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Enumeration;
-import java.util.IdentityHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.ResourceBundle;
 import org.jetbrains.annotations.NotNull;
 
@@ -27,8 +27,10 @@ public class Coroutines implements TaskListener {
     private final CoroNames coroNames;
     private long compileTime;
 
-    private final Map<Symbol, Pair<List<JCTree.JCMethodDecl>, List<JCTree.JCMethodDecl>>> coroutineMethods =
-        new IdentityHashMap<>();
+    private final MethodsReport methodsReport = new MethodsReport(
+        new ReferenceOpenHashSet<>(),
+        new Reference2ObjectOpenHashMap<>()
+    );
 
     public Coroutines(final Context context) {
         this.context = context;
@@ -47,17 +49,12 @@ public class Coroutines implements TaskListener {
         });
     }
 
-    public void reportCoroutineMethod(final JCTree.JCMethodDecl decl, final CoroutineKind type) {
-        final var pair = coroutineMethods.computeIfAbsent(decl.sym.owner, x -> Pair.of(
-            new ArrayList<>(),
-            new ArrayList<>()
-        ));
+    public void reportCoroutineMethod(final Symbol.ClassSymbol enclosingClass) {
+        methodsReport.classesWithCoroutines().add(enclosingClass);
+    }
 
-        if (type == CoroutineKind.TASK) {
-            pair.left().add(decl);
-        } else {
-            pair.right().add(decl);
-        }
+    public void reportCoroutineLambdaMethod(final Symbol.ClassSymbol enclosingClass, final int id) {
+        methodsReport.lambdaCoroutineMethods().computeIfAbsent(enclosingClass, ignored -> new IntArrayList()).add(id);
     }
 
     @Override
@@ -89,7 +86,11 @@ public class Coroutines implements TaskListener {
             compileTime = 0;
 
             final var startTime = System.currentTimeMillis();
-            new TransformPass(this).process(coroutineMethods);
+            try {
+                new TransformPass(this).process(methodsReport);
+            } catch (final IOException e) {
+                throw new RuntimeException(e);
+            }
             final var finalTime = System.currentTimeMillis();
 
             Log.instance(context).printRawLines("[Coro] codegen time: %sms".formatted(finalTime - startTime));

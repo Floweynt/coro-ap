@@ -1,6 +1,5 @@
 package com.floweytf.coro.ap.codegen;
 
-import com.floweytf.coro.ap.Constants;
 import com.floweytf.coro.ap.util.Util;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntList;
@@ -25,6 +24,7 @@ import org.objectweb.asm.tree.InnerClassNode;
 import org.objectweb.asm.tree.InsnList;
 import org.objectweb.asm.tree.InsnNode;
 import org.objectweb.asm.tree.IntInsnNode;
+import org.objectweb.asm.tree.JumpInsnNode;
 import org.objectweb.asm.tree.LabelNode;
 import org.objectweb.asm.tree.LdcInsnNode;
 import org.objectweb.asm.tree.LocalVariableNode;
@@ -37,18 +37,33 @@ import org.objectweb.asm.tree.VarInsnNode;
 import org.objectweb.asm.util.CheckClassAdapter;
 import org.objectweb.asm.util.TraceClassVisitor;
 
+import static com.floweytf.coro.ap.Constants.AWAIT_KW;
+import static com.floweytf.coro.ap.Constants.BASIC_TASK_CLASS_BIN;
+import static com.floweytf.coro.ap.Constants.BASIC_TASK_COMPLETE_ERROR;
+import static com.floweytf.coro.ap.Constants.BASIC_TASK_COMPLETE_SUCCESS;
+import static com.floweytf.coro.ap.Constants.BASIC_TASK_GET_EXECUTOR;
+import static com.floweytf.coro.ap.Constants.BASIC_TASK_RUN;
+import static com.floweytf.coro.ap.Constants.BASIC_TASK_SUSPEND_HELPER;
 import static com.floweytf.coro.ap.Constants.CLASS_TYPE_BIN;
+import static com.floweytf.coro.ap.Constants.COROUTINE_KW;
 import static com.floweytf.coro.ap.Constants.CORO_METADATA_CLASS_BIN;
 import static com.floweytf.coro.ap.Constants.CORO_METADATA_CLASS_CTOR;
 import static com.floweytf.coro.ap.Constants.CORO_METADATA_CLASS_DESC;
 import static com.floweytf.coro.ap.Constants.CO_CLASS_BIN;
+import static com.floweytf.coro.ap.Constants.CURRENT_EXECUTOR_KW;
+import static com.floweytf.coro.ap.Constants.OBJECT_CLASS_BIN;
+import static com.floweytf.coro.ap.Constants.OBJECT_TYPE;
 import static com.floweytf.coro.ap.Constants.RET_KW;
 import static com.floweytf.coro.ap.Constants.THROWABLE_CLASS_BIN;
 import static com.floweytf.coro.ap.Constants.THROWABLE_TYPE;
 
-public abstract class BasicMethodTransformer {
-    protected static final int LVT_THIS = 0;
-    protected static final int LVT_STATE = 1;
+public class MethodTransformer {
+    private static final int LVT_THIS = 0;
+    private static final int LVT_STATE = 1;
+    private static final int LVT_IS_EXCEPTION = LVT_STATE + 1;
+    private static final int LVT_RES_VAL = LVT_STATE + 2;
+    private static final int LVT_SCRATCH_SMALL = LVT_STATE + 3;
+    private static final int LVT_OFFSET = LVT_STATE + 4;
 
     private static boolean isCoMethod(final AbstractInsnNode node) {
         if (!(node instanceof final MethodInsnNode methodInsnNode)) {
@@ -74,10 +89,6 @@ public abstract class BasicMethodTransformer {
     private final AnalyzerAdapter analyzer;
     private final FieldAllocator fieldAllocator = new FieldAllocator();
 
-    private final int lvtScratch;
-    private final int lvtOffset;
-    private final Constants.MethodDesc handleException;
-
     private final Object[] initialLVTTypes;
 
     private final IntList suspendPointLines = new IntArrayList();
@@ -88,17 +99,9 @@ public abstract class BasicMethodTransformer {
      * @param methodOwner The owner of the method.
      * @param coMethod    The method to transform.
      * @param id          An unique identifier.
-     * @param lvtScratch  The scratch LVT variable index.
-     * @param lvtOffset   The LVT offset to remap locals.
      */
-    protected BasicMethodTransformer(final ClassNode methodOwner, final MethodNode coMethod, final int id,
-                                     final int lvtScratch, final int lvtOffset,
-                                     final Constants.MethodDesc handleException, final String superClass,
-                                     final Constants.MethodDesc implMethodDesc) {
+    public MethodTransformer(final ClassNode methodOwner, final MethodNode coMethod, final int id) {
         this.coMethodOwner = methodOwner;
-        this.lvtScratch = lvtScratch;
-        this.lvtOffset = lvtOffset;
-        this.handleException = handleException;
         this.argTypes = Util.getAllMethodArgs(methodOwner, coMethod);
         this.coMethod = coMethod;
         this.implClass = new ClassNode();
@@ -116,7 +119,7 @@ public abstract class BasicMethodTransformer {
             null,
             null
         );
-        this.implMethod = implMethodDesc.node(Opcodes.ACC_PROTECTED);
+        this.implMethod = BASIC_TASK_RUN.node(Opcodes.ACC_PROTECTED);
         this.implSuspendPointMetadataGetter = new MethodNode(
             Opcodes.ACC_PROTECTED,
             "getMetadata",
@@ -137,7 +140,7 @@ public abstract class BasicMethodTransformer {
         this.implClass.access = Opcodes.ACC_SUPER | Opcodes.ACC_SYNTHETIC;
         this.implClass.name = String.format("%s$%s$Coro$%d", methodOwner.name, coMethod.name, id);
         this.implClass.outerClass = methodOwner.name;
-        this.implClass.superName = superClass;
+        this.implClass.superName = BASIC_TASK_CLASS_BIN;
         this.implClass.version = methodOwner.version;
         this.implClass.methods.add(implMethod);
         this.implClass.methods.add(implClassCons);
@@ -158,20 +161,20 @@ public abstract class BasicMethodTransformer {
 
         this.analyzer = new AnalyzerAdapter(methodOwner.name, coMethod.access, coMethod.name, coMethod.desc, null);
 
-        this.initialLVTTypes = new Object[1 + implMethodDesc.arguments().length];
+        this.initialLVTTypes = new Object[1 + BASIC_TASK_RUN.arguments().length];
 
         initialLVTTypes[0] = implClass.name;
-        for (int i = 0; i < implMethodDesc.arguments().length; i++) {
-            initialLVTTypes[i + 1] = Util.typeToFrameType(implMethodDesc.arguments()[i]);
+        for (int i = 0; i < BASIC_TASK_RUN.arguments().length; i++) {
+            initialLVTTypes[i + 1] = Util.typeToFrameType(BASIC_TASK_RUN.arguments()[i]);
         }
     }
 
-    protected FrameNode createNode(final Object... stack) {
+    private FrameNode createNode(final Object... stack) {
         return new FrameNode(Opcodes.F_NEW, initialLVTTypes.length, initialLVTTypes, stack.length, stack);
     }
 
     private int remapLVT(final int lvt) {
-        return lvt + lvtOffset;
+        return lvt + LVT_OFFSET;
     }
 
     private FieldInsnNode scratchField(final int opc, final int id, final Type value) {
@@ -225,22 +228,22 @@ public abstract class BasicMethodTransformer {
         final var output = implMethod.instructions;
 
         if (frame.stack.size() > 1) {
-            output.add(new VarInsnNode(Opcodes.ASTORE, lvtScratch));
+            output.add(new VarInsnNode(Opcodes.ASTORE, LVT_SCRATCH_SMALL));
             Util.forEachStack(frame, 1, (arg) -> {
                 if (arg instanceof Util.StackEntry.Null) {
                     output.add(new InsnNode(Opcodes.POP));
                     resumeReversed.add(new InsnNode(Opcodes.ACONST_NULL));
                 } else if (arg instanceof final Util.StackEntry.Uninitialized uninitialized) {
-                    for(int i = 0; i < uninitialized.count(); i++) {
+                    for (int i = 0; i < uninitialized.count(); i++) {
                         output.add(new InsnNode(Opcodes.POP));
                     }
 
-                    for(int i = 0; i < uninitialized.count() - 1; i++) {
+                    for (int i = 0; i < uninitialized.count() - 1; i++) {
                         resumeReversed.add(new InsnNode(Opcodes.DUP));
                     }
 
                     resumeReversed.add(new TypeInsnNode(Opcodes.NEW, uninitialized.type().getInternalName()));
-                } else if (arg instanceof final Util.StackEntry.Regular regular){
+                } else if (arg instanceof final Util.StackEntry.Regular regular) {
                     final var fieldId = fieldAllocator.getOrAllocateFieldId(regular.type(), allocMap);
                     output.add(new VarInsnNode(Opcodes.ALOAD, LVT_THIS));
                     if (regular.type().getSize() == 2) {
@@ -257,7 +260,7 @@ public abstract class BasicMethodTransformer {
                 }
             });
 
-            output.add(new VarInsnNode(Opcodes.ALOAD, lvtScratch));
+            output.add(new VarInsnNode(Opcodes.ALOAD, LVT_SCRATCH_SMALL));
         }
 
         return () -> {
@@ -277,7 +280,7 @@ public abstract class BasicMethodTransformer {
         suspendPointLines.add(Integer.parseInt(name.substring(argStart + 1)));
     }
 
-    protected final void genSuspendPoint(final MethodInsnNode node) {
+    private void genSuspendPoint(final MethodInsnNode node) {
         final var output = implMethod.instructions;
         final var allocMap = new Object2IntArrayMap<Type>();
         final var resumeLabel = new LabelNode();
@@ -289,7 +292,7 @@ public abstract class BasicMethodTransformer {
 
         output.add(new VarInsnNode(Opcodes.ALOAD, LVT_THIS));
         output.add(new LdcInsnNode(suspendPointId));
-        genReportSuspend(output, node);
+        genReportSuspend(output);
         output.add(new InsnNode(Opcodes.RETURN));
 
         handleSuspendPointMetadata(node.name);
@@ -367,14 +370,14 @@ public abstract class BasicMethodTransformer {
                     handleCoMethod(output, methodInstr);
                 }
             } else if (instruction instanceof final FrameNode frameNode) {
-                final var locals = new Object[lvtOffset + frameNode.local.size()];
+                final var locals = new Object[LVT_OFFSET + frameNode.local.size()];
                 final var stack = new Object[frameNode.stack.size()];
 
                 System.arraycopy(initialLVTTypes, 0, locals, 0, initialLVTTypes.length);
-                Arrays.fill(locals, initialLVTTypes.length, lvtOffset, Opcodes.TOP);
+                Arrays.fill(locals, initialLVTTypes.length, LVT_OFFSET, Opcodes.TOP);
 
                 for (int off = 0; off < frameNode.local.size(); off++) {
-                    locals[lvtOffset + off] = Util.cloneFrameType(frameNode.local.get(off), labelCloner);
+                    locals[LVT_OFFSET + off] = Util.cloneFrameType(frameNode.local.get(off), labelCloner);
                 }
 
                 for (int off = 0; off < frameNode.stack.size(); off++) {
@@ -421,7 +424,7 @@ public abstract class BasicMethodTransformer {
             output.add(catcher);
             output.add(createNode(THROWABLE_CLASS_BIN));
             output.add(new VarInsnNode(Opcodes.ALOAD, LVT_THIS));
-            output.add(handleException.instr(Opcodes.INVOKESTATIC));
+            output.add(BASIC_TASK_COMPLETE_ERROR.instr(Opcodes.INVOKESTATIC));
             output.add(new InsnNode(Opcodes.RETURN));
             implMethod.tryCatchBlocks.add(new TryCatchBlockNode(start, end, catcher, THROWABLE_TYPE.getInternalName()));
         });
@@ -543,11 +546,10 @@ public abstract class BasicMethodTransformer {
         final var access = Opcodes.ACC_PRIVATE;
         final var fields = implClass.fields;
 
-        Util.forEachArgType(argTypes, (index, argType) -> {
-            fields.add(new FieldNode(access, "arg" + index, argType.getDescriptor(), null, null));
-        });
+        Util.forEachArgType(argTypes, (index, argType) ->
+            fields.add(new FieldNode(access, "arg" + index, argType.getDescriptor(), null, null)));
 
-        fieldAllocator.codegen(fields, access);
+        fieldAllocator.generateFields(fields, access);
     }
 
     public final ClassNode generate() {
@@ -565,15 +567,48 @@ public abstract class BasicMethodTransformer {
         return implClass;
     }
 
-    protected abstract void genReportSuspend(InsnList output, MethodInsnNode originalMethod);
+    private void genReportSuspend(final InsnList output) {
+        output.add(BASIC_TASK_SUSPEND_HELPER.instr(Opcodes.INVOKESTATIC));
+    }
 
-    protected abstract void genReportReturn(InsnList output, MethodInsnNode methodInstr);
+    private void genReportReturn(final InsnList output, final MethodInsnNode methodInstr) {
+        if (Type.getArgumentCount(methodInstr.desc) == 0) {
+            output.add(new InsnNode(Opcodes.ACONST_NULL));
+        }
 
-    protected abstract void genCheckException(InsnList output);
+        output.add(new VarInsnNode(Opcodes.ALOAD, LVT_THIS));
+        output.add(BASIC_TASK_COMPLETE_SUCCESS.instr(Opcodes.INVOKESTATIC));
+    }
 
-    protected abstract void genResume(InsnList output);
+    private void genCheckException(final InsnList output) {
+        final var exit = new LabelNode();
+        output.add(new VarInsnNode(Opcodes.ALOAD, LVT_RES_VAL));
+        output.add(new VarInsnNode(Opcodes.ILOAD, LVT_IS_EXCEPTION));
+        output.add(new JumpInsnNode(Opcodes.IFEQ, exit));
+        output.add(new TypeInsnNode(Opcodes.CHECKCAST, THROWABLE_TYPE.getInternalName()));
+        output.add(new InsnNode(Opcodes.ATHROW));
+        output.add(exit);
+        output.add(createNode(OBJECT_CLASS_BIN));
+        output.add(new InsnNode(Opcodes.POP));
+    }
 
-    protected abstract void genLocals(LabelNode beginLabel, LabelNode endLabel, List<LocalVariableNode> lvt);
+    private void genResume(final InsnList output) {
+        output.add(new VarInsnNode(Opcodes.ALOAD, LVT_RES_VAL));
+    }
 
-    protected abstract void handleCoMethod(InsnList output, MethodInsnNode methodInstr);
+    private void genLocals(final LabelNode begin, final LabelNode end, final List<LocalVariableNode> lvt) {
+        lvt.add(new LocalVariableNode("isEx", Type.BOOLEAN_TYPE.getDescriptor(), null, begin, end, LVT_IS_EXCEPTION));
+        lvt.add(new LocalVariableNode("res", OBJECT_TYPE.getDescriptor(), null, begin, end, LVT_RES_VAL));
+    }
+
+    private void handleCoMethod(final InsnList output, final MethodInsnNode methodInstr) {
+        if (methodInstr.name.startsWith(AWAIT_KW)) {
+            genSuspendPoint(methodInstr);
+        } else if (methodInstr.name.equals(CURRENT_EXECUTOR_KW)) {
+            output.add(new VarInsnNode(Opcodes.ALOAD, LVT_THIS));
+            output.add(BASIC_TASK_GET_EXECUTOR.instr(Opcodes.INVOKEVIRTUAL));
+        } else if (!methodInstr.name.equals(COROUTINE_KW)) { // pass on COROUTINE_KW b/c it just returns id
+            throw new AssertionError("illegal Co.<method> " + methodInstr.name);
+        }
+    }
 }

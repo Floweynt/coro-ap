@@ -1,6 +1,7 @@
 package com.floweytf.coro.concepts;
 
 import com.floweytf.coro.annotations.Coroutine;
+import java.util.concurrent.Executor;
 import org.jetbrains.annotations.ApiStatus;
 
 /**
@@ -77,4 +78,24 @@ public interface CoroutineExecutor {
             return "CoroutineExecutor.EAGER";
         }
     };
+
+    /**
+     * Converts a standard java {@link Executor} to a {@link CoroutineExecutor}.
+     *
+     * @param executor The java executor.
+     * @return The coroutine executor.
+     */
+    static CoroutineExecutor fromExecutor(final Executor executor) {
+        return new CoroutineExecutor() {
+            @Override
+            public void executeTask(final Runnable handler) {
+                executor.execute(handler);
+            }
+
+            @Override
+            public String toString() {
+                return "CoroutineExecutor[" + executor.toString() + "]";
+            }
+        };
+    }
 }

@@ -6,6 +6,7 @@ import com.floweytf.coro.concepts.Awaitable;
 import com.floweytf.coro.concepts.Continuation;
 import com.floweytf.coro.concepts.Task;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
 
 public class TestTask {
     private static final Awaitable<Void> SWITCH_THREAD = (executor, resume) -> new Thread(
@@ -191,6 +192,14 @@ public class TestTask {
         Co.await(PRINT_CALLEE_LOCATION_INFO);
         Co.await(test12());
         Co.await(test13());
+
+        Co.await((Co.<Supplier<Task<Void>>>coroutine(() -> {
+            System.out.println("Hi from lambda");
+            Co.await(SWITCH_THREAD);
+            System.out.println("Bye from lambda");
+            return Co.ret();
+        })).get());
+
         try {
             Co.await(test7());
         } finally {

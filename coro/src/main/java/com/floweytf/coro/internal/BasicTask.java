@@ -69,9 +69,6 @@ public abstract class BasicTask<T> implements Task<T> {
 
         @Override
         public StackTraceElement calleeLocation() {
-            // String classLoaderName, String moduleName, String moduleVersion, String declaringClass, String
-            // methodName, String fileName, int lineNumber
-
             final var declaringClass = self.getMetadata().declaringClass();
             final var moduleDesc = declaringClass.getModule().getDescriptor();
 

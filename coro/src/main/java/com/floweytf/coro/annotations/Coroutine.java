@@ -3,7 +3,6 @@ package com.floweytf.coro.annotations;
 import com.floweytf.coro.Co;
 import com.floweytf.coro.concepts.Awaitable;
 import com.floweytf.coro.concepts.CoroutineExecutor;
-import com.floweytf.coro.concepts.Generator;
 import com.floweytf.coro.concepts.Task;
 import com.floweytf.coro.support.Awaitables;
 import java.lang.annotation.ElementType;
@@ -15,7 +14,7 @@ import java.lang.annotation.Target;
  * Annotation to mark a method as a coroutine. All coroutines are <i>stackless</i>.
  * <br>
  * A coroutine is a method that may be suspended. All methods annotated with {@code Coroutine} must return a
- * {@link Task} or a {@link Generator}. In a coroutine, methods such as
+ * {@link Task}. In a coroutine, methods such as
  * {@link Co#await(Awaitable)} and {@link Co#ret()}/{@link Co#ret(Object)} become available,
  * allowing for imperative async code without callbacks. For example, an echo server could be implemented like:
  * <pre>{@code
@@ -55,7 +54,6 @@ import java.lang.annotation.Target;
  * @see CoroutineExecutor
  * @see Task
  * @see Awaitables utility methods.
- * @see Generator generators.
  */
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.CLASS)

@@ -10,9 +10,9 @@ public record CoroNames(
     Name taskClassName,
     Name generatorClassName,
     Name awaitName,
-    Name yieldName,
     Name retName,
-    Name currentExecutorName
+    Name currentExecutorName,
+    Name coroutineName
 ) {
     CoroNames(final Names names) {
         this(
@@ -22,9 +22,9 @@ public record CoroNames(
             names.fromString(Constants.TASK_CLASS),
             names.fromString(Constants.GENERATOR_CLASS),
             names.fromString(Constants.AWAIT_KW),
-            names.fromString(Constants.YIELD_KW),
             names.fromString(Constants.RET_KW),
-            names.fromString(Constants.CURRENT_EXECUTOR_KW)
+            names.fromString(Constants.CURRENT_EXECUTOR_KW),
+            names.fromString(Constants.COROUTINE_KW)
         );
     }
 }

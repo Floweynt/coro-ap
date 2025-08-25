@@ -15,7 +15,6 @@ public class PluginImpl implements Plugin {
         "processing", "tree", "util", "jvm", "api"
     );
 
-    @SuppressWarnings("deprecation")
     private static void addOpens() {
         final var jdkCompilerModule = ModuleLayer.boot().findModule("jdk.compiler").orElseThrow();
         final var ownModule = PluginImpl.class.getModule();
