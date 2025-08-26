@@ -193,12 +193,14 @@ public class TestTask {
         Co.await(test12());
         Co.await(test13());
 
-        Co.await((Co.<Supplier<Task<Void>>>coroutine(() -> {
+        final Supplier<Task<Void>> coro = Co.coroutine(() -> {
             System.out.println("Hi from lambda");
             Co.await(SWITCH_THREAD);
             System.out.println("Bye from lambda");
             return Co.ret();
-        })).get());
+        });
+
+        Co.await(coro.get());
 
         try {
             Co.await(test7());
