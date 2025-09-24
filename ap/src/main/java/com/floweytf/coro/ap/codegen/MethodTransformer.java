@@ -232,6 +232,7 @@ public class MethodTransformer {
         final var resumeReversed = new ArrayList<AbstractInsnNode>();
         final var output = implMethod.instructions;
 
+        // observe that the top of the stack is necessarily the awaitable type, so we want this check here
         if (frame.stack.size() > 1) {
             output.add(new VarInsnNode(Opcodes.ASTORE, LVT_SCRATCH_SMALL));
             Util.forEachStack(frame, 1, (arg) -> {

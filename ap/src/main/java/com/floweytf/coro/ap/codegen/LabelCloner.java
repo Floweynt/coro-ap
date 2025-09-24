@@ -13,4 +13,4 @@ class LabelCloner extends Object2ObjectOpenHashMap<LabelNode, LabelNode> {
         }
         return res;
     }
-};
+}
