@@ -26,18 +26,20 @@ public abstract class BasicTask<T> implements Task<T> {
         }
     }
 
-    private static final class ResumeContinuation<T> implements Continuation.Coroutine<T> {
+    private static sealed abstract class BaseContinuation<T> implements Continuation.Coroutine<T> {
         private final Awaitable<T> awaitable;
-        private final BasicTask<T> self;
+        protected final BasicTask<T> self;
         private final int resumeState;
 
         private boolean flag;
 
-        private ResumeContinuation(final Awaitable<T> awaitable, final BasicTask<T> self, final int resumeState) {
+        private BaseContinuation(final Awaitable<T> awaitable, final BasicTask<T> self, final int resumeState) {
             this.awaitable = awaitable;
             this.self = self;
             this.resumeState = resumeState;
         }
+
+        protected abstract void resume(Runnable task);
 
         private void resumeCommon() {
             if ((boolean) RESUME_CONTINUATION_FLAG.getAndSet(this, true)) {
@@ -52,14 +54,14 @@ public abstract class BasicTask<T> implements Task<T> {
         public void submitError(final Throwable error) {
             resumeCommon();
             self.getExecutor().onResumeExceptionally(self, awaitable, error);
-            self.myExecutor.executeTask(() -> self.run(resumeState, true, error));
+            resume(() -> self.run(resumeState, true, error));
         }
 
         @Override
         public void submit(final T value) {
             resumeCommon();
             self.getExecutor().onResume(self, awaitable, value);
-            self.myExecutor.executeTask(() -> self.run(resumeState, false, value));
+            resume(() -> self.run(resumeState, false, value));
         }
 
         @Override
@@ -81,6 +83,28 @@ public abstract class BasicTask<T> implements Task<T> {
                 self.getMetadata().fileName(),
                 self.getMetadata().suspendPointLineNo()[resumeState - 1]
             );
+        }
+    }
+
+    private static final class ImmediateContinuation<T> extends BaseContinuation<T> {
+        private ImmediateContinuation(final Awaitable<T> awaitable, final BasicTask<T> self, final int resumeState) {
+            super(awaitable, self, resumeState);
+        }
+
+        @Override
+        protected void resume(final Runnable task) {
+            task.run();
+        }
+    }
+
+    private static final class ScheduledContinuation<T> extends BaseContinuation<T> {
+        private ScheduledContinuation(final Awaitable<T> awaitable, final BasicTask<T> self, final int resumeState) {
+            super(awaitable, self, resumeState);
+        }
+
+        @Override
+        protected void resume(final Runnable task) {
+            self.myExecutor.executeTask(task);
         }
     }
 
@@ -108,7 +132,7 @@ public abstract class BasicTask<T> implements Task<T> {
             COMPLETE_STACK = lookup.findVarHandle(BasicTask.class, "completeStack", Entry.class);
             MY_EXECUTOR = lookup.findVarHandle(BasicTask.class, "myExecutor", CoroutineExecutor.class);
             RESULT = lookup.findVarHandle(BasicTask.class, "result", Result.class);
-            RESUME_CONTINUATION_FLAG = lookup.findVarHandle(ResumeContinuation.class, "flag", boolean.class);
+            RESUME_CONTINUATION_FLAG = lookup.findVarHandle(ScheduledContinuation.class, "flag", boolean.class);
         } catch (final NoSuchFieldException | IllegalAccessException e) {
             throw new RuntimeException(e);
         }
@@ -193,7 +217,11 @@ public abstract class BasicTask<T> implements Task<T> {
         self.currentAwaitable = awaitable;
 
         self.getExecutor().onSuspend(self, awaitable);
-        awaitable.execute(self.getExecutor(), new ResumeContinuation(awaitable, self, resumeState));
+        awaitable.execute(self.getExecutor(),
+            awaitable instanceof Awaitable.Unwrapped<T> ?
+                new ImmediateContinuation(awaitable, self, resumeState) :
+                new ScheduledContinuation(awaitable, self, resumeState)
+        );
     }
 
     protected static <T> void completeSuccess(final T val, final BasicTask<T> self) {

@@ -2,7 +2,6 @@ package com.floweytf.coro.concepts;
 
 import com.floweytf.coro.Co;
 import com.floweytf.coro.support.Result;
-import java.util.function.Consumer;
 import org.jetbrains.annotations.ApiStatus;
 
 /**
@@ -40,12 +39,25 @@ public interface Awaitable<T> {
      * This method is invoked when the coroutine encounters this {@code Awaitable}. The {@code resume} callback must
      * be called with the result of the task when it finishes, allowing the coroutine to resume execution. The
      * {@code executor} parameter provides the context in which the continuation should be executed. Do not dispatch
-     * the execution of {@code result} on the executor, since that has been handled already. Instead, use this
-     * executor to dispatch additional work, or to start an underlying coroutine.
+     * the execution of {@code result} on the executor. Instead, use this executor to dispatch additional work, or to
+     * start an underlying coroutine.
      *
      * @param executor The {@link CoroutineExecutor} responsible for managing the execution context of the coroutine.
-     * @param resume   A {@link Consumer} that accepts the result of the asynchronous task and resumes the coroutine
+     * @param resume   A {@link Continuation} that accepts the result of the asynchronous task and resumes the coroutine
      *                 execution. The result is wrapped in a {@link Result} to handle both success and failure cases.
      */
     void execute(final CoroutineExecutor executor, Continuation<T> resume);
+
+    /**
+     * A "raw" awaitable, which signals that the {@link Continuation} passed to
+     * {@link Awaitable#execute(CoroutineExecutor, Continuation)} should not dispatch execution on the executor. This
+     * is important for awaitables that provide some guarantees about the execution thread (for instance, awaitables
+     * that dispatch resume onto a specific thread).
+     *
+     * @param <T>
+     */
+    @FunctionalInterface
+    @ApiStatus.OverrideOnly
+    interface Unwrapped<T> extends Awaitable<T> {
+    }
 }
