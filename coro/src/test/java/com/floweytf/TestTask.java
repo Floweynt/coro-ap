@@ -173,6 +173,19 @@ public class TestTask {
     }
 
     @Coroutine
+    private static Task<Void> test14() {
+        int i = 0;
+
+        try {
+          Co.await(test7());
+        } finally {
+            System.out.println();
+        }
+
+        return Co.ret();
+    }
+
+    @Coroutine
     public static Task<Void> runTests() {
         Co.await(test0());
         Co.await(test1());
@@ -221,8 +234,8 @@ public class TestTask {
     }
 
     public static void main(final String[] args) {
+        test14().begin().onComplete(System.out::println);
         runTests().begin().onComplete(System.out::println);
-
         System.out.println(runTests());
         System.out.println(test5(0));
     }

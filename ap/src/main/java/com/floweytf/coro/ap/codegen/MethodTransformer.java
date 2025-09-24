@@ -5,7 +5,6 @@ import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntList;
 import it.unimi.dsi.fastutil.objects.Object2IntArrayMap;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
-import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -24,7 +23,6 @@ import org.objectweb.asm.tree.InnerClassNode;
 import org.objectweb.asm.tree.InsnList;
 import org.objectweb.asm.tree.InsnNode;
 import org.objectweb.asm.tree.IntInsnNode;
-import org.objectweb.asm.tree.JumpInsnNode;
 import org.objectweb.asm.tree.LabelNode;
 import org.objectweb.asm.tree.LdcInsnNode;
 import org.objectweb.asm.tree.LocalVariableNode;
@@ -34,10 +32,14 @@ import org.objectweb.asm.tree.TableSwitchInsnNode;
 import org.objectweb.asm.tree.TryCatchBlockNode;
 import org.objectweb.asm.tree.TypeInsnNode;
 import org.objectweb.asm.tree.VarInsnNode;
+import org.objectweb.asm.tree.analysis.Analyzer;
+import org.objectweb.asm.tree.analysis.AnalyzerException;
+import org.objectweb.asm.tree.analysis.BasicVerifier;
 import org.objectweb.asm.util.CheckClassAdapter;
 import org.objectweb.asm.util.TraceClassVisitor;
 
 import static com.floweytf.coro.ap.Constants.AWAIT_KW;
+import static com.floweytf.coro.ap.Constants.BASIC_TASK_CHECK_THROW;
 import static com.floweytf.coro.ap.Constants.BASIC_TASK_CLASS_BIN;
 import static com.floweytf.coro.ap.Constants.BASIC_TASK_COMPLETE_ERROR;
 import static com.floweytf.coro.ap.Constants.BASIC_TASK_COMPLETE_SUCCESS;
@@ -51,7 +53,6 @@ import static com.floweytf.coro.ap.Constants.CORO_METADATA_CLASS_CTOR;
 import static com.floweytf.coro.ap.Constants.CORO_METADATA_CLASS_DESC;
 import static com.floweytf.coro.ap.Constants.CO_CLASS_BIN;
 import static com.floweytf.coro.ap.Constants.CURRENT_EXECUTOR_KW;
-import static com.floweytf.coro.ap.Constants.OBJECT_CLASS_BIN;
 import static com.floweytf.coro.ap.Constants.OBJECT_TYPE;
 import static com.floweytf.coro.ap.Constants.RET_KW;
 import static com.floweytf.coro.ap.Constants.THROWABLE_CLASS_BIN;
@@ -88,6 +89,8 @@ public class MethodTransformer {
     private final List<LabelNode> resumeLabels = new ArrayList<>();
     private final AnalyzerAdapter analyzer;
     private final FieldAllocator fieldAllocator = new FieldAllocator();
+    private final LabelCloner labelCloner = new LabelCloner();
+    private final TryCatchHandler tryCatchHandler;
 
     private final Object[] initialLVTTypes;
 
@@ -167,9 +170,11 @@ public class MethodTransformer {
         for (int i = 0; i < BASIC_TASK_RUN.arguments().length; i++) {
             initialLVTTypes[i + 1] = Util.typeToFrameType(BASIC_TASK_RUN.arguments()[i]);
         }
+
+        this.tryCatchHandler = new TryCatchHandler(implMethod, labelCloner);
     }
 
-    private FrameNode createNode(final Object... stack) {
+    private FrameNode createFrameNode(final Object... stack) {
         return new FrameNode(Opcodes.F_NEW, initialLVTTypes.length, initialLVTTypes, stack.length, stack);
     }
 
@@ -285,6 +290,9 @@ public class MethodTransformer {
         final var allocMap = new Object2IntArrayMap<Type>();
         final var resumeLabel = new LabelNode();
 
+        final var preSuspendLabel = new LabelNode();
+        output.add(preSuspendLabel);
+
         final var resumeLocal = suspendSaveLocals(analyzer, allocMap);
         final var resumeStack = suspendSaveStack(analyzer, allocMap);
 
@@ -292,37 +300,32 @@ public class MethodTransformer {
 
         output.add(new VarInsnNode(Opcodes.ALOAD, LVT_THIS));
         output.add(new LdcInsnNode(suspendPointId));
-        genReportSuspend(output);
+        output.add(BASIC_TASK_SUSPEND_HELPER.instr(Opcodes.INVOKESTATIC));
         output.add(new InsnNode(Opcodes.RETURN));
 
         handleSuspendPointMetadata(node.name);
 
         output.add(resumeLabel);
-
-        output.add(createNode());
-        genCheckException(output);
-
+        output.add(createFrameNode());
         resumeLocal.run();
         resumeStack.run();
 
-        genResume(output);
+        output.add(new VarInsnNode(Opcodes.ALOAD, LVT_RES_VAL));
+
+        output.add(new VarInsnNode(Opcodes.ILOAD, LVT_IS_EXCEPTION));
+        output.add(new VarInsnNode(Opcodes.ALOAD, LVT_RES_VAL));
+        output.add(BASIC_TASK_CHECK_THROW.instr(Opcodes.INVOKESTATIC));
+
+        final var postResumeLabel = new LabelNode();
+        output.add(postResumeLabel);
+
+        tryCatchHandler.splitTryCatchBlocks(preSuspendLabel, postResumeLabel);
 
         resumeLabels.add(resumeLabel);
     }
 
     private void codegenImplMethod() {
         final var output = implMethod.instructions;
-        final var labelCloner = new Object2ObjectOpenHashMap<LabelNode, LabelNode>() {
-            @Override
-            public LabelNode get(final Object k) {
-                var res = super.get(k);
-                if (res == null) {
-                    res = new LabelNode();
-                    put((LabelNode) k, res);
-                }
-                return res;
-            }
-        };
 
         final var entryLabel = new LabelNode();
         resumeLabels.add(entryLabel);
@@ -334,8 +337,9 @@ public class MethodTransformer {
         //   { dup, getfield, store }
         //   pop
         output.add(entryLabel);
+
         // this is the entry point, which means we have locals == args
-        output.add(createNode());
+        output.add(createFrameNode());
         output.add(new VarInsnNode(Opcodes.ALOAD, LVT_THIS));
         Util.forEachArgType(argTypes, (index, argType) -> {
             output.add(new InsnNode(Opcodes.DUP));
@@ -391,6 +395,9 @@ public class MethodTransformer {
                     stack.length,
                     stack
                 ));
+            } else if (instruction instanceof final LabelNode labelNode) {
+                tryCatchHandler.onLabelNode(labelNode);
+                output.add(labelNode.clone(labelCloner));
             } else {
                 // copy over the instruction
                 output.add(instruction.clone(labelCloner));
@@ -399,15 +406,6 @@ public class MethodTransformer {
             // update the frame
             instruction.accept(analyzer);
         }
-
-        // copy try-catch block, cloning labels
-        // TODO: copy annotations
-        coMethod.tryCatchBlocks.stream().map(block -> new TryCatchBlockNode(
-            labelCloner.get(block.start),
-            labelCloner.get(block.end),
-            labelCloner.get(block.handler),
-            block.type
-        )).forEach(implMethod.tryCatchBlocks::add);
 
         // generate the switch table
         output.insert(new TableSwitchInsnNode(
@@ -422,7 +420,7 @@ public class MethodTransformer {
         Util.withMethodBody(output, (start, end) -> {
             final var catcher = new LabelNode();
             output.add(catcher);
-            output.add(createNode(THROWABLE_CLASS_BIN));
+            output.add(createFrameNode(THROWABLE_CLASS_BIN));
             output.add(new VarInsnNode(Opcodes.ALOAD, LVT_THIS));
             output.add(BASIC_TASK_COMPLETE_ERROR.instr(Opcodes.INVOKESTATIC));
             output.add(new InsnNode(Opcodes.RETURN));
@@ -444,10 +442,11 @@ public class MethodTransformer {
                 )).collect(Collectors.toList());
             }
 
-            implMethod.localVariables.add(
-                new LocalVariableNode("state", Type.INT_TYPE.getDescriptor(), null, start, end, LVT_STATE)
-            );
-            genLocals(start, end, implMethod.localVariables);
+            final var lvt = implMethod.localVariables;
+            lvt.add(new LocalVariableNode("state", Type.INT_TYPE.getDescriptor(), null, start, end, LVT_STATE));
+            lvt.add(new LocalVariableNode("isEx", Type.BOOLEAN_TYPE.getDescriptor(), null, start, end,
+                LVT_IS_EXCEPTION));
+            lvt.add(new LocalVariableNode("res", OBJECT_TYPE.getDescriptor(), null, start, end, LVT_RES_VAL));
         });
     }
 
@@ -561,14 +560,16 @@ public class MethodTransformer {
         codegenSuspendPointMetadataGetter();
 
         if (Boolean.getBoolean("coro.debug")) {
-            implClass.accept(new CheckClassAdapter(new TraceClassVisitor(new PrintWriter(System.out))));
+            try {
+                new Analyzer<>(new BasicVerifier()).analyzeAndComputeMaxs(implClass.name, implMethod);
+            } catch (final AnalyzerException e) {
+                throw new RuntimeException(e);
+            }
+
+            implClass.accept(new CheckClassAdapter(new TraceClassVisitor(new PrintWriter(System.out)), true));
         }
 
         return implClass;
-    }
-
-    private void genReportSuspend(final InsnList output) {
-        output.add(BASIC_TASK_SUSPEND_HELPER.instr(Opcodes.INVOKESTATIC));
     }
 
     private void genReportReturn(final InsnList output, final MethodInsnNode methodInstr) {
@@ -578,27 +579,6 @@ public class MethodTransformer {
 
         output.add(new VarInsnNode(Opcodes.ALOAD, LVT_THIS));
         output.add(BASIC_TASK_COMPLETE_SUCCESS.instr(Opcodes.INVOKESTATIC));
-    }
-
-    private void genCheckException(final InsnList output) {
-        final var exit = new LabelNode();
-        output.add(new VarInsnNode(Opcodes.ALOAD, LVT_RES_VAL));
-        output.add(new VarInsnNode(Opcodes.ILOAD, LVT_IS_EXCEPTION));
-        output.add(new JumpInsnNode(Opcodes.IFEQ, exit));
-        output.add(new TypeInsnNode(Opcodes.CHECKCAST, THROWABLE_TYPE.getInternalName()));
-        output.add(new InsnNode(Opcodes.ATHROW));
-        output.add(exit);
-        output.add(createNode(OBJECT_CLASS_BIN));
-        output.add(new InsnNode(Opcodes.POP));
-    }
-
-    private void genResume(final InsnList output) {
-        output.add(new VarInsnNode(Opcodes.ALOAD, LVT_RES_VAL));
-    }
-
-    private void genLocals(final LabelNode begin, final LabelNode end, final List<LocalVariableNode> lvt) {
-        lvt.add(new LocalVariableNode("isEx", Type.BOOLEAN_TYPE.getDescriptor(), null, begin, end, LVT_IS_EXCEPTION));
-        lvt.add(new LocalVariableNode("res", OBJECT_TYPE.getDescriptor(), null, begin, end, LVT_RES_VAL));
     }
 
     private void handleCoMethod(final InsnList output, final MethodInsnNode methodInstr) {

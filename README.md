@@ -49,3 +49,6 @@ public class Main {
 
 I have not benchmarked anything. Exception handling is not implemented efficiently, since each coroutine has
 a method-global catch statement to propagate exceptions.
+
+## Future Work
+- Optimize the transformer to use streaming visitor api rather than asm tree

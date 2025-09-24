@@ -93,6 +93,15 @@ public class Constants {
     );
     public static final String AWAITABLE_CLASS_BIN = AWAITABLE_CLASS.replace('.', '/');
 
+    // protected static void checkThrow(final boolean isEx, final Object arg) throws Throwable {
+    public static final MethodDesc BASIC_TASK_CHECK_THROW = new MethodDesc(
+        BASIC_TASK_CLASS_BIN,
+        "checkThrow",
+        Type.VOID_TYPE,
+        Type.BOOLEAN_TYPE,
+        OBJECT_TYPE
+    );
+
     // protected static <T, U> void suspendHelper(Awaitable<T> awaitable, BasicTask<U> self, int newState) {
     public static final MethodDesc BASIC_TASK_SUSPEND_HELPER = new MethodDesc(
         BASIC_TASK_CLASS_BIN,

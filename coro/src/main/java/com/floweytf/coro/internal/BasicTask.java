@@ -114,6 +114,12 @@ public abstract class BasicTask<T> implements Task<T> {
         }
     }
 
+    protected static void checkThrow(final boolean isEx, final Object arg) throws Throwable {
+        if (isEx) {
+            throw (Throwable) arg;
+        }
+    }
+
     @Override
     public Task<T> begin(final CoroutineExecutor executor) {
         // Need non-weak CAS here, since this absolutely cannot fail (no loop)
