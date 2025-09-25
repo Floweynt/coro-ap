@@ -7,12 +7,26 @@ import com.floweytf.coro.ap.util.ErrorReporter;
 import com.floweytf.coro.ap.util.Frame;
 import com.sun.tools.javac.code.Flags;
 import com.sun.tools.javac.code.Symbol;
+import com.sun.tools.javac.code.TargetType;
 import com.sun.tools.javac.code.Type;
 import com.sun.tools.javac.tree.JCTree;
+import com.sun.tools.javac.tree.JCTree.JCClassDecl;
+import com.sun.tools.javac.tree.JCTree.JCExpression;
+import com.sun.tools.javac.tree.JCTree.JCFieldAccess;
+import com.sun.tools.javac.tree.JCTree.JCIdent;
+import com.sun.tools.javac.tree.JCTree.JCMethodDecl;
+import com.sun.tools.javac.tree.JCTree.JCMethodInvocation;
+import com.sun.tools.javac.tree.JCTree.JCTypeApply;
 import com.sun.tools.javac.util.Name;
 import org.jetbrains.annotations.Nullable;
 
+import static com.sun.tools.javac.code.Symbol.MethodSymbol;
+import static com.sun.tools.javac.tree.JCTree.JCLambda;
+
 public abstract class CoroutineProcessingTreeScannerBase extends ContextTrackingTreeScanner {
+    protected record InvocationData(@Nullable DirectiveKind directive, @Nullable MethodSymbol methodSymbol) {
+    }
+
     protected final ErrorReporter errorReporter;
     protected final CoroNames names;
     protected final Frame<CoroutineKind> coroutineKind = new Frame<>();
@@ -22,11 +36,11 @@ public abstract class CoroutineProcessingTreeScannerBase extends ContextTracking
         this.names = names;
     }
 
-    private Symbol getMethodSymbol(final JCTree.JCExpression expression) {
+    private Symbol getMethodSymbol(final JCExpression expression) {
         Symbol symbol = null;
-        if (expression instanceof final JCTree.JCIdent identifier) {
+        if (expression instanceof final JCIdent identifier) {
             symbol = identifier.sym;
-        } else if (expression instanceof final JCTree.JCFieldAccess fieldAccess) {
+        } else if (expression instanceof final JCFieldAccess fieldAccess) {
             symbol = fieldAccess.sym;
         }
         return symbol;
@@ -41,11 +55,11 @@ public abstract class CoroutineProcessingTreeScannerBase extends ContextTracking
     }
 
     private CoroutineKind getKindFromReturnType(final JCTree tree) {
-        if (!(tree instanceof final JCTree.JCTypeApply apply)) {
+        if (!(tree instanceof final JCTypeApply apply)) {
             return CoroutineKind.NONE;
         }
 
-        if (!(apply.getType() instanceof final JCTree.JCIdent ident)) {
+        if (!(apply.getType() instanceof final JCIdent ident)) {
             return CoroutineKind.NONE;
         }
 
@@ -56,35 +70,34 @@ public abstract class CoroutineProcessingTreeScannerBase extends ContextTracking
         return CoroutineKind.NONE;
     }
 
-    protected final @Nullable DirectiveKind getDirective(final JCTree.JCMethodInvocation tree) {
-        final Symbol symbol = getMethodSymbol(tree.meth);
+    protected final InvocationData readInvocationData(final JCMethodInvocation tree) {
+        final var symbol = getMethodSymbol(tree.meth);
+        final var methodSymbol = symbol instanceof final MethodSymbol ms ? ms : null;
+
+        final DirectiveKind kind;
 
         if (symbol == null || !typeMatch(symbol.owner, names.coClassName())) {
-            return null;
+            kind = null;
+        } else if (symbol.name == names.awaitName()) {
+            kind = DirectiveKind.AWAIT;
+        } else if (symbol.name == names.retName()) {
+            kind = DirectiveKind.RETURN;
+        } else if (symbol.name == names.currentExecutorName()) {
+            kind = DirectiveKind.CURRENT_EXECUTOR;
+        } else {
+            kind = null;
         }
 
-        if (symbol.name == names.awaitName()) {
-            return DirectiveKind.AWAIT;
-        } else if (symbol.name == names.retName()) {
-            return DirectiveKind.RETURN;
-        } else if (symbol.name == names.coroutineName()) {
-            return DirectiveKind.COROUTINE;
-        } else if (symbol.name == names.currentExecutorName()) {
-            return DirectiveKind.CURRENT_EXECUTOR;
-        } else {
-            throw new IllegalStateException(
-                "JCMethodInvocation on unknown Co method"
-            );
-        }
+        return new InvocationData(kind, methodSymbol);
     }
 
     @Override
-    public void visitClassDef(final JCTree.JCClassDecl tree) {
+    public void visitClassDef(final JCClassDecl tree) {
         coroutineKind.push(null, () -> super.visitClassDef(tree));
     }
 
     @Override
-    public void visitMethodDef(final JCTree.JCMethodDecl tree) {
+    public void visitMethodDef(final JCMethodDecl tree) {
         final var coroAnnotation = tree.mods.annotations
             .stream()
             .filter(ann -> typeMatch(ann.type, names.coroutineAnnotationName()))
@@ -111,38 +124,57 @@ public abstract class CoroutineProcessingTreeScannerBase extends ContextTracking
         coroutineKind.push(kind, () -> super.visitMethodDef(tree));
     }
 
-    @Override
-    public void visitApply(final JCTree.JCMethodInvocation tree) {
-        final var directive = getDirective(tree);
+    private boolean[] buildIsCoroArgTable(final InvocationData data, final JCMethodInvocation tree) {
+        // TODO: cache this on JCMethodInvocation
+        final var mSym = data.methodSymbol();
+        final var flags = new boolean[tree.args.size()];
 
-        if (directive == null) {
-            super.visitApply(tree);
-            return;
+        if (mSym != null && mSym.getMetadata() != null) {
+            for (final var attr : mSym.getMetadata().getTypeAttributes()) {
+                if (attr.position.type == TargetType.METHOD_FORMAL_PARAMETER &&
+                    attr.type.tsym.flatName() == names.makeCoroAnnotationName()) {
+                    flags[attr.position.parameter_index] = true;
+                }
+            }
         }
 
-        visitCoroutineMethod(directive, tree);
+        return flags;
     }
 
-    protected abstract void onCoroutineMethod(JCTree.JCClassDecl declaringClass);
+    @Override
+    public void visitLambda(final JCLambda tree) {
+        coroutineKind.push(CoroutineKind.NONE, () -> super.visitLambda(tree));
+    }
 
-    protected abstract void onCoroutineLambda(JCTree.JCClassDecl declaringClass, int id);
+    @Override
+    public void visitApply(final JCMethodInvocation tree) {
+        final var invokeData = readInvocationData(tree);
+        final var directive = invokeData.directive();
 
-    protected void visitCoroutineMethod(final DirectiveKind directive, final JCTree.JCMethodInvocation invocation) {
-        if (directive == DirectiveKind.COROUTINE) {
-            final var argument = invocation.args.get(0);
+        scan(tree.typeargs);
+        scan(tree.meth);
 
-            if (argument instanceof final JCTree.JCLambda lambda) {
+        final var isCoroArg = buildIsCoroArgTable(invokeData, tree);
+        int argIdx = 0;
+        for (final var arg : tree.args) {
+            if (isCoroArg[argIdx] && arg instanceof final JCLambda lambda) {
+                // make this lambda a coroutine!
                 onCoroutineLambda(currentClass.get(), lambdaCount.get());
                 coroutineKind.push(CoroutineKind.TASK, () -> super.visitLambda(lambda));
-                return;
+            } else {
+                arg.accept(this);
             }
-
-            // allow fall-thought - if an error occurs, then just assume it's used wrongly and check insides
-            errorReporter.reportError(argument, "must be a lambda expression");
+            argIdx++;
         }
 
-        for (final var arg : invocation.args) {
-            arg.accept(this);
+        if (directive != null) {
+            visitCoroutineMethod(directive, tree);
         }
     }
+
+    protected abstract void onCoroutineMethod(JCClassDecl declaringClass);
+
+    protected abstract void onCoroutineLambda(JCClassDecl declaringClass, int id);
+
+    protected abstract void visitCoroutineMethod(final DirectiveKind directive, final JCMethodInvocation invocation);
 }

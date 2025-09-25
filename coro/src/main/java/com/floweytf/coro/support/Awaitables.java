@@ -6,9 +6,10 @@ import com.floweytf.coro.concepts.Continuation;
 import com.floweytf.coro.concepts.CoroutineExecutor;
 import com.floweytf.coro.concepts.Task;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 
 /**
- * Utility class for working with {@link Awaitable} and {@link CompletableFuture} objects in a coroutine-based system.
+ * Utility class for working with {@link Awaitable} and Java standard library objects.
  * <p>
  * This class provides methods to convert between {@link CompletableFuture} and {@link Awaitable}, as well as a way to
  * execute coroutines on different {@link CoroutineExecutor}s and to convert coroutines into Java's standard
@@ -19,16 +20,16 @@ public class Awaitables {
     }
 
     /**
-     * Converts a {@link CompletableFuture} to an {@link Awaitable}.
+     * Converts a {@link CompletionStage} to an {@link Awaitable}.
      * <p>
-     * This method allows a {@link CompletableFuture} to be used in a coroutine system by converting it into an
+     * This method allows a {@link CompletionStage} to be used in a coroutine system by converting it into an
      * {@link Awaitable}, which can then be awaited using {@link Co#await(Awaitable)}.
      *
-     * @param future The {@link CompletableFuture} to convert.
-     * @param <T>    The type of the result that the {@link CompletableFuture} produces.
+     * @param future The {@link CompletionStage} to convert.
+     * @param <T>    The type of the result that the {@link CompletionStage} produces.
      * @return An {@link Awaitable} that may be awaited using {@link Co#await(Awaitable)}.
      */
-    public static <T> Awaitable<T> awaitable(final CompletableFuture<T> future) {
+    public static <T> Awaitable<T> awaitable(final CompletionStage<T> future) {
         return (executor, resume) -> future.whenComplete((value, throwable) -> {
             if (throwable != null) {
                 resume.submitError(throwable);

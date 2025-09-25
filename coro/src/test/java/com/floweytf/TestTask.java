@@ -5,6 +5,7 @@ import com.floweytf.coro.annotations.Coroutine;
 import com.floweytf.coro.concepts.Awaitable;
 import com.floweytf.coro.concepts.Continuation;
 import com.floweytf.coro.concepts.Task;
+import com.floweytf.coro.support.Result;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 
@@ -233,9 +234,16 @@ public class TestTask {
         return Co.ret();
     }
 
+    private static void printResult(final Result<?> res) {
+        res.match(
+            System.out::println,
+            Throwable::printStackTrace
+        );
+    }
+
     public static void main(final String[] args) {
-        test14().begin().onComplete(System.out::println);
-        runTests().begin().onComplete(System.out::println);
+        test14().begin().onComplete(TestTask::printResult);
+        runTests().begin().onComplete(TestTask::printResult);
         System.out.println(runTests());
         System.out.println(test5(0));
     }

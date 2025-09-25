@@ -1,6 +1,5 @@
 package com.floweytf.coro.ap.pass;
 
-import com.floweytf.coro.ap.CoroutineKind;
 import com.floweytf.coro.ap.Coroutines;
 import com.floweytf.coro.ap.DirectiveKind;
 import com.floweytf.coro.ap.util.ErrorReporter;
@@ -8,7 +7,11 @@ import com.floweytf.coro.ap.util.scanners.CoroutineProcessingTreeScannerBase;
 import com.sun.source.util.TaskEvent;
 import com.sun.tools.javac.code.Symbol;
 import com.sun.tools.javac.tree.JCTree;
+import com.sun.tools.javac.tree.JCTree.JCMethodInvocation;
 import java.util.function.UnaryOperator;
+
+import static com.floweytf.coro.ap.CoroutineKind.NONE;
+import static com.floweytf.coro.ap.DirectiveKind.RETURN;
 
 public class ValidatePass extends CoroutineProcessingTreeScannerBase {
     private final Coroutines coroutines;
@@ -42,14 +45,13 @@ public class ValidatePass extends CoroutineProcessingTreeScannerBase {
 
     @Override
     public void visitReturn(final JCTree.JCReturn tree) {
-        if (coroutineKind.get() == CoroutineKind.NONE) {
+        if (coroutineKind.get() == NONE) {
             return;
         }
 
-        if (tree.expr instanceof final JCTree.JCMethodInvocation invocation &&
-            getDirective(invocation) == DirectiveKind.RETURN) {
+        if (tree.expr instanceof final JCMethodInvocation inv && readInvocationData(inv).directive() == RETURN) {
             // only visit the args
-            for (final var arg : invocation.args) {
+            for (final var arg : inv.args) {
                 arg.accept(this);
             }
 
@@ -61,12 +63,11 @@ public class ValidatePass extends CoroutineProcessingTreeScannerBase {
     }
 
     @Override
-    protected void visitCoroutineMethod(final DirectiveKind directive, final JCTree.JCMethodInvocation invocation) {
+    protected void visitCoroutineMethod(final DirectiveKind directive, final JCMethodInvocation invocation) {
         switch (directive) {
         case AWAIT -> {
-            if (coroutineKind.get() == CoroutineKind.NONE) {
+            if (coroutineKind.get() == NONE) {
                 errorReporter.reportError(invocation, "Co.await() can only be used inside a coroutine");
-                return;
             }
 
             if (isSync.get()) {
@@ -76,15 +77,13 @@ public class ValidatePass extends CoroutineProcessingTreeScannerBase {
             }
         }
         case CURRENT_EXECUTOR -> {
-            if (coroutineKind.get() == CoroutineKind.NONE) {
+            if (coroutineKind.get() == NONE) {
                 errorReporter.reportError(invocation, "Co.currentExecutor() can only be used inside a coroutine");
             }
         }
         case RETURN ->
             errorReporter.reportError(invocation, "illegal use of Co.ret, must be in the form `return Co.ret(...)`");
         }
-
-        super.visitCoroutineMethod(directive, invocation);
     }
 
     @Override

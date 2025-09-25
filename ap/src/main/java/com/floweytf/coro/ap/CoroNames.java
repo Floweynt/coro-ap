@@ -12,7 +12,7 @@ public record CoroNames(
     Name awaitName,
     Name retName,
     Name currentExecutorName,
-    Name coroutineName
+    Name makeCoroAnnotationName
 ) {
     CoroNames(final Names names) {
         this(
@@ -24,7 +24,7 @@ public record CoroNames(
             names.fromString(Constants.AWAIT_KW),
             names.fromString(Constants.RET_KW),
             names.fromString(Constants.CURRENT_EXECUTOR_KW),
-            names.fromString(Constants.COROUTINE_KW)
+            names.fromString(Constants.MAKE_CORO_ANN)
         );
     }
 }

@@ -47,7 +47,6 @@ import static com.floweytf.coro.ap.Constants.BASIC_TASK_GET_EXECUTOR;
 import static com.floweytf.coro.ap.Constants.BASIC_TASK_RUN;
 import static com.floweytf.coro.ap.Constants.BASIC_TASK_SUSPEND_HELPER;
 import static com.floweytf.coro.ap.Constants.CLASS_TYPE_BIN;
-import static com.floweytf.coro.ap.Constants.COROUTINE_KW;
 import static com.floweytf.coro.ap.Constants.CORO_METADATA_CLASS_BIN;
 import static com.floweytf.coro.ap.Constants.CORO_METADATA_CLASS_CTOR;
 import static com.floweytf.coro.ap.Constants.CORO_METADATA_CLASS_DESC;
@@ -171,7 +170,7 @@ public class MethodTransformer {
             initialLVTTypes[i + 1] = Util.typeToFrameType(BASIC_TASK_RUN.arguments()[i]);
         }
 
-        this.tryCatchHandler = new TryCatchHandler(implMethod, labelCloner);
+        this.tryCatchHandler = new TryCatchHandler(implMethod, coMethod, labelCloner);
     }
 
     private FrameNode createFrameNode(final Object... stack) {
@@ -313,12 +312,11 @@ public class MethodTransformer {
 
         output.add(new VarInsnNode(Opcodes.ALOAD, LVT_RES_VAL));
 
+        final var postResumeLabel = new LabelNode();
+        output.add(postResumeLabel);
         output.add(new VarInsnNode(Opcodes.ILOAD, LVT_IS_EXCEPTION));
         output.add(new VarInsnNode(Opcodes.ALOAD, LVT_RES_VAL));
         output.add(BASIC_TASK_CHECK_THROW.instr(Opcodes.INVOKESTATIC));
-
-        final var postResumeLabel = new LabelNode();
-        output.add(postResumeLabel);
 
         tryCatchHandler.splitTryCatchBlocks(preSuspendLabel, postResumeLabel);
 
@@ -560,7 +558,7 @@ public class MethodTransformer {
         codegenFields();
         codegenSuspendPointMetadataGetter();
 
-        if (Boolean.getBoolean("coro.debug")) {
+        if (Boolean.getBoolean("coro.debug") || true) {
             try {
                 new Analyzer<>(new BasicVerifier()).analyzeAndComputeMaxs(implClass.name, implMethod);
             } catch (final AnalyzerException e) {
@@ -588,8 +586,6 @@ public class MethodTransformer {
         } else if (methodInstr.name.equals(CURRENT_EXECUTOR_KW)) {
             output.add(new VarInsnNode(Opcodes.ALOAD, LVT_THIS));
             output.add(BASIC_TASK_GET_EXECUTOR.instr(Opcodes.INVOKEVIRTUAL));
-        } else if (!methodInstr.name.equals(COROUTINE_KW)) { // pass on COROUTINE_KW b/c it just returns id
-            throw new AssertionError("illegal Co.<method> " + methodInstr.name);
         }
     }
 }

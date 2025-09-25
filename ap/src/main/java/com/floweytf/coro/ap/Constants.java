@@ -21,6 +21,7 @@ public class Constants {
     }
 
     public static final String COROUTINE_ANN = "com.floweytf.coro.annotations.Coroutine";
+    public static final String MAKE_CORO_ANN = "com.floweytf.coro.annotations.MakeCoro";
     public static final String DIAGNOSTIC_KEY = "com.floweytf.coro.ap";
     public static final String CO_CLASS = "com.floweytf.coro.Co";
     public static final String TASK_CLASS = "com.floweytf.coro.concepts.Task";
@@ -32,7 +33,6 @@ public class Constants {
 
     public static final String AWAIT_KW = "await";
     public static final String RET_KW = "ret";
-    public static final String COROUTINE_KW = "coroutine";
     public static final String CURRENT_EXECUTOR_KW = "currentExecutor";
 
     public static final Type OBJECT_TYPE = Type.getType(Object.class);

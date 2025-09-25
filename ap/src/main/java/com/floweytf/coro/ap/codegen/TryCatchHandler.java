@@ -76,11 +76,11 @@ class TryCatchHandler {
     // endLabel -> { blocks }
     private final Map<LabelNode, Set<TryCatchHelper>> activeLabels = new HashMap<>();
 
-    TryCatchHandler(final MethodNode implMethod, final LabelCloner labelCloner) {
+    TryCatchHandler(final MethodNode implMethod, final MethodNode originalMethod, final LabelCloner labelCloner) {
         this.implMethod = implMethod;
 
-        if (implMethod.tryCatchBlocks != null) {
-            for (final var tryCatchBlock : implMethod.tryCatchBlocks) {
+        if (originalMethod.tryCatchBlocks != null) {
+            for (final var tryCatchBlock : originalMethod.tryCatchBlocks) {
                 byStartLabel.computeIfAbsent(tryCatchBlock.start, ignored -> new ArrayList<>())
                     .add(new TryCatchHelper(tryCatchBlock, labelCloner));
             }

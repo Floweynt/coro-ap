@@ -1,8 +1,10 @@
 package com.floweytf.coro;
 
+import com.floweytf.coro.annotations.MakeCoro;
 import com.floweytf.coro.concepts.Awaitable;
 import com.floweytf.coro.concepts.CoroutineExecutor;
 import com.floweytf.coro.concepts.Task;
+import java.util.function.Supplier;
 
 /**
  * A utility class that provides support for coroutine-like functionality in Java.
@@ -70,10 +72,12 @@ public class Co {
      * {@link AssertionError} with a message indicating that the annotation processor (AP) has not been properly
      * configured.
      *
+     * <p>Note that it is very much possible for execution to change threads after a call to this method. Proceed
+     * with caution!
+     *
      * @param awaitable The awaitable result to await.
      * @param <T>       The type of the result being awaited.
-     * @return The result of awaiting the provided awaitable. This return value is not used directly and is a
-     * placeholder for coroutine handling.
+     * @return The result of awaiting the provided awaitable.
      * @throws AssertionError If called directly, indicating the AP is not set up.
      */
     public static <T> T await(final Awaitable<T> awaitable) {
@@ -94,8 +98,16 @@ public class Co {
         throw new AssertionError("Co.currentExecutor() should never be called directly; have you set up the AP properly?");
     }
 
-    public static <T> T coroutine(final T lambdaExpr) {
+    public static <T> T coroutine(@MakeCoro final T lambdaExpr) {
         return lambdaExpr;
+    }
+
+    public static <T> Task<T> launch(@MakeCoro final Supplier<Task<T>> coroutine) {
+        return coroutine.get().begin();
+    }
+
+    public static <T> Task<T> launch(final CoroutineExecutor executor, @MakeCoro final Supplier<Task<T>> coroutine) {
+        return coroutine.get().begin(executor);
     }
 }
 
