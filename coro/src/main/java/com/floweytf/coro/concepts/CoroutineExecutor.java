@@ -1,16 +1,19 @@
 package com.floweytf.coro.concepts;
 
 import com.floweytf.coro.annotations.Coroutine;
+import com.floweytf.coro.annotations.NoThrow;
 import java.util.concurrent.Executor;
 import org.jetbrains.annotations.ApiStatus;
 
 /**
  * Represents the execution context of a coroutine, responsible for managing how and when the continuation of a
  * coroutine is executed.
+ *
  * <p>
  * A {@code CoroutineExecutor} defines the environment or thread in which the continuation (i.e., the next step of a
  * coroutine) will be executed. It controls when and how the task, suspended by the coroutine, should be resumed. This
  * abstraction allows for different scheduling behaviors and execution contexts.
+ * </p>
  *
  * @see Coroutine
  */
@@ -28,6 +31,7 @@ public interface CoroutineExecutor {
      * @param handler The task (continuation) to run. This is typically the next step or the callback to execute after
      *                a coroutine suspends.
      */
+    @NoThrow
     void executeTask(Runnable handler);
 
     /**
@@ -36,6 +40,7 @@ public interface CoroutineExecutor {
      * @param task      The task that is being suspended.
      * @param awaitable The awaitable to wait on.
      */
+    @NoThrow
     default void onSuspend(final Task<?> task, final Awaitable<?> awaitable) {
     }
 
@@ -47,16 +52,18 @@ public interface CoroutineExecutor {
      * @param result    The result of the awaitable.
      * @param <T>       The result type of the awaitable.
      */
+    @NoThrow
     default <T> void onResume(final Task<?> task, final Awaitable<T> awaitable, final T result) {
     }
 
     /**
-     * Called after a task resumes <i>exceptionally.</i>
+     * Called after a task resumes <i>exceptionally</i>.
      *
      * @param task      The task that is to be resumed.
      * @param awaitable The awaitable that has just completed.
      * @param error     The error that was thrown.
      */
+    @NoThrow
     default void onResumeExceptionally(final Task<?> task, final Awaitable<?> awaitable, final Throwable error) {
     }
 

@@ -1,6 +1,6 @@
 # Java Coroutines
 
-Coroutines in java.
+A library/javac plugin for coroutines in java.
 
 **DISCLAIMER**:
 This is current not stable enough to be used in production. Bugs are likely. This is implemented as a javac plugin that
@@ -45,10 +45,17 @@ public class Main {
 
 ```
 
+## Why not Loom?
+
+Virtual threads are very flexible to integrate into existing codebases. However, coroutines provide much stronger
+control over the specific execution policy of any given task, and ultimately are suitable for applications such as
+single-threaded imperative state machines, generators, and much more.
+
 ## Performance
 
 I have not benchmarked anything. Exception handling is not implemented efficiently, since each coroutine has
 a method-global catch statement to propagate exceptions.
 
 ## Future Work
+
 - Optimize the transformer to use streaming visitor api rather than asm tree

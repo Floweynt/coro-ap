@@ -16,6 +16,7 @@ public class PluginImpl implements Plugin {
     );
 
     private static void addOpens() {
+        // from lombok, must update hacks whenever JDK does something weird
         final var jdkCompilerModule = ModuleLayer.boot().findModule("jdk.compiler").orElseThrow();
         final var ownModule = PluginImpl.class.getModule();
 

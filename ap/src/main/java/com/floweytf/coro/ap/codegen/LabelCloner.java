@@ -3,6 +3,9 @@ package com.floweytf.coro.ap.codegen;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import org.objectweb.asm.tree.LabelNode;
 
+/**
+ * Clones {@link LabelNode}s for bytecode transformation.
+ */
 class LabelCloner extends Object2ObjectOpenHashMap<LabelNode, LabelNode> {
     @Override
     public LabelNode get(final Object k) {

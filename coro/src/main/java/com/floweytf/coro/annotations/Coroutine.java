@@ -10,13 +10,18 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
+import static com.floweytf.coro.concepts.Awaitable.Unwrapped;
+
 /**
  * Annotation to mark a method as a coroutine. All coroutines are <i>stackless</i>.
- * <br>
+ *
+ * <p>
  * A coroutine is a method that may be suspended. All methods annotated with {@code Coroutine} must return a
  * {@link Task}. In a coroutine, methods such as {@link Co#await(Awaitable)} and {@link Co#ret()}/
  * {@link Co#ret(Object)} become available, allowing for imperative async code without callbacks. For example, an
  * echo server could be implemented like:
+ * </p>
+ *
  * <pre>{@code
  * while(socket.isOpen()) {
  *     final var data = Co.await(socket.read(512));
@@ -24,15 +29,21 @@ import java.lang.annotation.Target;
  * }
  * return Co.ret();
  * }</pre>
- * <br>
+ *
+ * <p>
  * To return from a coroutine, you must use {@code return Co.ret([value]);}. Regular return statements are not accepted.
  * Void coroutines still must explicitly return once control flow reaches the end of the method. These limitations
  * are designed to ensure easy IDE integration without the use of any plugins.
- * <br>
+ * </p>
+ *
+ * <p>
  * The execution of a coroutine is determined by the {@link CoroutineExecutor} that the coroutine is
  * started with in {@link Task#begin()}. The simplest executor eagerly executes the task on the same thread as the
  * completion. That is, if an {@link Awaitable} chooses to resume the coroutine on some arbitrary thread, the
- * execution of the coroutine will follow that.
+ * execution of the coroutine will follow that. An awaitable may choose to override the execution dispatching
+ * behavior of the {@link CoroutineExecutor} by implementing the {@link Unwrapped} interface instead.
+ * </p>
+ *
  * <pre>{@code
  * private static final Awaitable<Void> SWITCH_THREAD = (executor, resume) ->
  *     new Thread(() -> resume.submit(null)).start();
@@ -53,7 +64,7 @@ import java.lang.annotation.Target;
  * @see Awaitable
  * @see CoroutineExecutor
  * @see Task
- * @see Awaitables utility methods.
+ * @see Awaitables
  */
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.CLASS)

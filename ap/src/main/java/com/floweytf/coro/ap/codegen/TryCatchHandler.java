@@ -10,31 +10,47 @@ import org.objectweb.asm.tree.LabelNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.TryCatchBlockNode;
 
-// we need to implement some non-trivial logic in regard to exception handler blocks
-// specifically, each try block that suspends must be broken apart, so f.e. a block like
-//
-// try (L1, L2) -> L3
-// L1
-//     ...
-//     Co.await(...);
-//     ...
-// L2
-//
-// L3: /* catch block */
-//
-// must become
-// try (L1, Suspend) -> L3, (Resume, L2) -> L3
-//
-// L1
-//     ...
-// Suspend
-//     suspend
-//     return
-// ResumeEnter
-//     /* resume */
-// Resume
-//     ...
-// L2
+/**
+ * A handler for try-catch blocks in coroutines.
+ *
+ * <p>
+ * This class is required because we need to implement some non-trivial logic in regard to exception handler blocks.
+ * Specifically, each try block that suspends must be broken apart, so f.e. a block like
+ * </p>
+ *
+ * <pre>{@code
+ * // TRY L1, L2 CATCH L3
+ * L1:
+ *     ...
+ *     Co.await(...);
+ *     ...
+ * L2:
+ *     ...
+ * L3: (catch block)
+ * }</pre>
+ *
+ * <p>
+ * Must be broken apart when suspending/resuming, since even though it is not possible for an exception to be thrown
+ * when resuming the coroutine, the JVM will still complain. Therefore, we can only begin catching *after* the
+ * resumption has completed. Therefore, we need to transform this into:
+ * </p>
+ *
+ * <pre>{@code
+ * // TRY L1, L_SUSPEND CATCH L3
+ * // TRY L_RESUME, L2 CATCH L3
+ * L1:
+ *     ...
+ * L_SUSPEND:
+ *     // suspend
+ *     return
+ * L_RESUME_ENTER:
+ *     // resume
+ * RESUME:
+ *     // check and throw exception
+ *     ...
+ * L2:
+ * }</pre>
+ */
 class TryCatchHandler {
     private class TryCatchHelper extends TryCatchBlockNode {
         private final LabelNode unclonedEndNode;
@@ -87,7 +103,7 @@ class TryCatchHandler {
         }
     }
 
-    public void onLabelNode(final LabelNode node) {
+    void onLabelNode(final LabelNode node) {
         final var enteredBlocks = byStartLabel.get(node);
         final var exitedBlocks = activeLabels.get(node);
 
@@ -104,7 +120,13 @@ class TryCatchHandler {
         }
     }
 
-    public void splitTryCatchBlocks(final LabelNode start, final LabelNode end) {
+    /**
+     * Splits apart a catch block.
+     *
+     * @param start The start of the no-except region.
+     * @param end   The end of the no-except region.
+     */
+    void splitTryCatchBlocks(final LabelNode start, final LabelNode end) {
         activeLabels.forEach((labelNode, tryCatchHelpers) -> {
             for (final var tryCatchHelper : tryCatchHelpers) {
                 tryCatchHelper.splitBlock(start, end);

@@ -1,14 +1,17 @@
 package com.floweytf.coro.concepts;
 
 import com.floweytf.coro.Co;
+import com.floweytf.coro.annotations.NoThrow;
 import com.floweytf.coro.support.Result;
 import org.jetbrains.annotations.ApiStatus;
 
 /**
  * Represents an asynchronous task that can be awaited by a coroutine.
+ *
  * <p>
  * An {@code Awaitable} represents a non-blocking, asynchronous operation. This operation performs some logic and,
  * once completed, invokes a callback function with either the result or an error.
+ * </p>
  *
  * <p>
  * Example usage:
@@ -41,11 +44,13 @@ public interface Awaitable<T> {
      * {@code executor} parameter provides the context in which the continuation should be executed. Do not dispatch
      * the execution of {@code result} on the executor. Instead, use this executor to dispatch additional work, or to
      * start an underlying coroutine.
+     * </p>
      *
      * @param executor The {@link CoroutineExecutor} responsible for managing the execution context of the coroutine.
      * @param resume   A {@link Continuation} that accepts the result of the asynchronous task and resumes the coroutine
      *                 execution. The result is wrapped in a {@link Result} to handle both success and failure cases.
      */
+    @NoThrow
     void execute(final CoroutineExecutor executor, Continuation<T> resume);
 
     /**
@@ -53,8 +58,6 @@ public interface Awaitable<T> {
      * {@link Awaitable#execute(CoroutineExecutor, Continuation)} should not dispatch execution on the executor. This
      * is important for awaitables that provide some guarantees about the execution thread (for instance, awaitables
      * that dispatch resume onto a specific thread).
-     *
-     * @param <T>
      */
     @FunctionalInterface
     @ApiStatus.OverrideOnly

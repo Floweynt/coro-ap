@@ -1,5 +1,6 @@
 package com.floweytf.coro.internal;
 
+import com.floweytf.coro.annotations.NoThrow;
 import com.floweytf.coro.concepts.Awaitable;
 import com.floweytf.coro.concepts.Continuation;
 import com.floweytf.coro.concepts.CoroutineExecutor;
@@ -145,6 +146,7 @@ public abstract class BasicTask<T> implements Task<T> {
     }
 
     @Override
+    @NoThrow
     public Task<T> begin(final CoroutineExecutor executor) {
         // Need non-weak CAS here, since this absolutely cannot fail (no loop)
         // if it's nonnull, that means begin() was already called and there's no need to start it again
@@ -156,6 +158,7 @@ public abstract class BasicTask<T> implements Task<T> {
     }
 
     @Override
+    @NoThrow
     public void onComplete(final Consumer<Result<T>> resume) {
         final var newNode = new Entry<T>(x -> myExecutor.executeTask(() -> resume.accept(x)));
 
@@ -206,6 +209,7 @@ public abstract class BasicTask<T> implements Task<T> {
     }
 
     @Override
+    @NoThrow
     public void execute(final CoroutineExecutor executor, final Continuation<T> resume) {
         begin(executor);
         onComplete(tResult -> tResult.match(resume::submit, resume::submitError));

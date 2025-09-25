@@ -23,9 +23,18 @@ public interface Continuation<T> {
      */
     void submit(T value);
 
+    /**
+     * A continuation that comes from a task.
+     */
     interface Coroutine<T> extends Continuation<T> {
+        /**
+         * The instance of task that was suspended.
+         */
         Task<T> theTask();
 
+        /**
+         * The code location of the {@code Co.await} call.
+         */
         StackTraceElement calleeLocation();
     }
 }

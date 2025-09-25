@@ -10,10 +10,12 @@ import java.util.concurrent.CompletionStage;
 
 /**
  * Utility class for working with {@link Awaitable} and Java standard library objects.
+ *
  * <p>
  * This class provides methods to convert between {@link CompletableFuture} and {@link Awaitable}, as well as a way to
  * execute coroutines on different {@link CoroutineExecutor}s and to convert coroutines into Java's standard
  * {@link CompletableFuture} for easier integration with non-coroutine code.
+ * </p>
  */
 public class Awaitables {
     private Awaitables() {
@@ -21,16 +23,18 @@ public class Awaitables {
 
     /**
      * Converts a {@link CompletionStage} to an {@link Awaitable}.
+     *
      * <p>
      * This method allows a {@link CompletionStage} to be used in a coroutine system by converting it into an
      * {@link Awaitable}, which can then be awaited using {@link Co#await(Awaitable)}.
+     * </p>
      *
-     * @param future The {@link CompletionStage} to convert.
-     * @param <T>    The type of the result that the {@link CompletionStage} produces.
+     * @param stage The {@link CompletionStage} to convert.
+     * @param <T>   The type of the result that the {@link CompletionStage} produces.
      * @return An {@link Awaitable} that may be awaited using {@link Co#await(Awaitable)}.
      */
-    public static <T> Awaitable<T> awaitable(final CompletionStage<T> future) {
-        return (executor, resume) -> future.whenComplete((value, throwable) -> {
+    public static <T> Awaitable<T> awaitable(final CompletionStage<T> stage) {
+        return (executor, resume) -> stage.whenComplete((value, throwable) -> {
             if (throwable != null) {
                 resume.submitError(throwable);
             } else {
@@ -41,9 +45,11 @@ public class Awaitables {
 
     /**
      * Executes a {@link Task} on a specified {@link CoroutineExecutor}.
+     *
      * <p>
      * This method allows a {@link Task} to be executed on a different {@link CoroutineExecutor} than the one it was
      * originally scheduled on. It returns an {@link Awaitable} that can be awaited within a coroutine.
+     * </p>
      *
      * @param executor The {@link CoroutineExecutor} on which the {@link Task} should be executed.
      * @param task     The {@link Task} to execute.
@@ -59,9 +65,11 @@ public class Awaitables {
 
     /**
      * Converts an {@link Awaitable} into a {@link CompletableFuture}.
+     *
      * <p>
      * This method runs the given {@link Awaitable} on the specified {@link CoroutineExecutor} and returns a
      * {@link CompletableFuture} that represents the result of the {@link Awaitable}.
+     * </p>
      *
      * @param executor  The {@link CoroutineExecutor} to execute the {@link Awaitable} on.
      * @param awaitable The {@link Awaitable} to execute and convert to a {@link CompletableFuture}.
@@ -88,10 +96,12 @@ public class Awaitables {
 
     /**
      * Converts an {@link Awaitable} into a {@link CompletableFuture} using the default {@link CoroutineExecutor#EAGER}.
+     *
      * <p>
      * This is a convenience method that executes the {@link Awaitable} using the default eager executor
      * ({@link CoroutineExecutor#EAGER}), which runs the coroutine immediately on the current thread, and returns
      * a {@link CompletableFuture} that represents the result of the execution.
+     * </p>
      *
      * @param awaitable The {@link Awaitable} to execute and convert to a {@link CompletableFuture}.
      * @param <T>       The result type of the {@link Awaitable}.
@@ -99,6 +109,6 @@ public class Awaitables {
      * @see CoroutineExecutor#EAGER
      */
     public static <T> CompletableFuture<T> future(final Awaitable<T> awaitable) {
-        return future(CoroutineExecutor.EAGER, awaitable); // Use the default eager executor
+        return future(CoroutineExecutor.EAGER, awaitable);
     }
 }

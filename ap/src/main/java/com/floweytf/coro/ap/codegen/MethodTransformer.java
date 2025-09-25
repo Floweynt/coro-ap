@@ -558,7 +558,7 @@ public class MethodTransformer {
         codegenFields();
         codegenSuspendPointMetadataGetter();
 
-        if (Boolean.getBoolean("coro.debug") || true) {
+        if (Boolean.getBoolean("coro.debug")) {
             try {
                 new Analyzer<>(new BasicVerifier()).analyzeAndComputeMaxs(implClass.name, implMethod);
             } catch (final AnalyzerException e) {
