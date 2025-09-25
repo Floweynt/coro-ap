@@ -17,9 +17,8 @@ import java.util.function.Supplier;
  *
  * <p>
  * Most methods throw an {@link AssertionError} if called directly, indicating that the necessary annotation
- * processor (AP) for handling coroutine syntax has not been properly set up. These methods are only placeholders
- * that allow the code to compile when using coroutine features, but are expected to be processed and replaced by the
- * AP during compilation.
+ * processor (AP) has not been properly set up. These methods are only placeholders that allow the code to compile
+ * when using coroutine features, but are expected to be processed and replaced by the AP during compilation.
  * </p>
  */
 public class Co {
@@ -67,7 +66,8 @@ public class Co {
     /**
      * Awaits on an {@link Awaitable}, suspending execution until it is resumed by the awaitable.
      *
-     * <p>
+     * <p><strong>WARNING:</strong>
+     * </p><p>
      * Note that it is very much possible for execution to change threads after a call to this method. Proceed with
      * caution!
      * </p>

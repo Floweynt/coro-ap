@@ -54,10 +54,15 @@ public interface Awaitable<T> {
     void execute(final CoroutineExecutor executor, Continuation<T> resume);
 
     /**
-     * A "raw" awaitable, which signals that the {@link Continuation} passed to
+     * An "unwrapped" awaitable, which signals that the {@link Continuation} passed to
      * {@link Awaitable#execute(CoroutineExecutor, Continuation)} should not dispatch execution on the executor. This
      * is important for awaitables that provide some guarantees about the execution thread (for instance, awaitables
      * that dispatch resume onto a specific thread).
+     *
+     * <p>
+     * This is an advanced concept for creating custom awaitables and should be used when the continuation is
+     * guaranteed to be called from the correct thread context, making the executor's scheduling redundant.
+     * </p>
      */
     @FunctionalInterface
     @ApiStatus.OverrideOnly
