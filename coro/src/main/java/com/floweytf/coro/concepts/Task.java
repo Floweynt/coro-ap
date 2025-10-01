@@ -81,6 +81,11 @@ public interface Task<T> extends Awaitable<T> {
     @Override
     void execute(CoroutineExecutor executor, Continuation<T> resume);
 
+    /**
+     * Converts this task to a java future.
+     *
+     * @return The future, which completes with the result of {@code this}.
+     */
     default CompletableFuture<T> asFuture() {
         final var future = new CompletableFuture<T>();
         onComplete(res -> res.match(future::complete, future::completeExceptionally));

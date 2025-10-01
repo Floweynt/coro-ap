@@ -2,6 +2,7 @@ package com.floweytf.coro.concepts;
 
 import com.floweytf.coro.annotations.Coroutine;
 import com.floweytf.coro.annotations.MakeCoro;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.function.Supplier;
 import org.jetbrains.annotations.ApiStatus;
@@ -65,7 +66,7 @@ public interface CoroutineExecutor {
     }
 
     /**
-     * Launches a coroutine with this.
+     * Launches a coroutine with {@code this}.
      *
      * @param coroutine The coroutine to launch, which may be a <i>coroutine lambda</i>.
      * @param <T>       The result-type of the coroutine.
@@ -76,6 +77,14 @@ public interface CoroutineExecutor {
         return coroutine.get().begin(this);
     }
 
+    /**
+     * Launches a coroutine with {@code this}, in a blocking manner, in the same way as
+     * {@link CompletableFuture#join()}.
+     *
+     * @param coroutine The coroutine to launch, which may be a <i>coroutine lambda</i>.
+     * @param <T>The    result-type of the coroutine.
+     * @return The result of the task.
+     */
     default <T> T launchBlocking(@MakeCoro final Supplier<Task<T>> coroutine) {
         return launch(coroutine).asFuture().join();
     }

@@ -104,14 +104,54 @@ public class Co {
         return lambdaExpr;
     }
 
+    /**
+     * Creates a {@link Task} from a coroutine lambda without launching it.
+     *
+     * <p>
+     * This method is useful when you want to construct a coroutine but not execute it immediately.
+     * The coroutine will be suspended until explicitly launched.
+     * </p>
+     *
+     * @param coroutine A lambda representing a coroutine that returns a {@link Task}.
+     * @param <T>       The type of the result produced by the coroutine.
+     * @return The {@link Task} representing the coroutine, which can be launched or awaited later.
+     */
     public static <T> Task<T> makeTask(@MakeCoro final Supplier<Task<T>> coroutine) {
         return coroutine.get();
     }
 
+    /**
+     * Launches a coroutine asynchronously using the default {@link CoroutineExecutor}.
+     *
+     * <p>
+     * The coroutine is scheduled to run eagerly using {@link CoroutineExecutor#EAGER}, and its execution begins
+     * immediately.
+     * </p>
+     *
+     * @param coroutine A lambda representing a coroutine that returns a {@link Task}.
+     * @param <T>       The type of the result produced by the coroutine.
+     * @return A {@link Task} representing the running coroutine.
+     */
     public static <T> Task<T> launch(@MakeCoro final Supplier<Task<T>> coroutine) {
         return CoroutineExecutor.EAGER.launch(coroutine);
     }
 
+    /**
+     * Launches a coroutine synchronously, blocking until the result is available.
+     *
+     * <p>
+     * This method runs the coroutine on the calling thread and blocks until the coroutine completes and returns
+     * a result.
+     * </p>
+     *
+     * <p>
+     * Useful for running coroutines from non-coroutine code or in main/test methods.
+     * </p>
+     *
+     * @param coroutine A lambda representing a coroutine that returns a {@link Task}.
+     * @param <T>       The type of the result produced by the coroutine.
+     * @return The result of the coroutine after completion.
+     */
     public static <T> T launchBlocking(@MakeCoro final Supplier<Task<T>> coroutine) {
         return CoroutineExecutor.EAGER.launchBlocking(coroutine);
     }

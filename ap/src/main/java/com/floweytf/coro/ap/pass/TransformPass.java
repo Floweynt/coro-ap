@@ -6,7 +6,6 @@ import com.floweytf.coro.ap.Coroutines;
 import com.floweytf.coro.ap.Debug;
 import com.floweytf.coro.ap.codegen.MethodTransformer;
 import com.floweytf.coro.ap.util.SymbolToFile;
-import com.sun.tools.javac.comp.LambdaToMethod;
 import com.sun.tools.javac.main.JavaCompiler;
 import java.io.IOException;
 import javax.tools.JavaFileObject;
@@ -17,13 +16,11 @@ import org.objectweb.asm.tree.MethodNode;
 public class TransformPass {
     private final boolean isCompileTask;
     private final SymbolToFile symbolToFile;
-    private final LambdaToMethod lambdaToMethod;
     private final Debug debug;
 
     public TransformPass(final Coroutines coroutines) {
         isCompileTask = !JavaCompiler.instance(coroutines.getContext()).sourceOutput;
         symbolToFile = new SymbolToFile(coroutines.getContext());
-        lambdaToMethod = LambdaToMethod.instance(coroutines.getContext());
         debug = coroutines.debug();
     }
 
