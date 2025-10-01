@@ -1,8 +1,8 @@
 package com.floweytf.coro.concepts;
 
 import com.floweytf.coro.Co;
-import com.floweytf.coro.annotations.NoThrow;
 import com.floweytf.coro.support.Result;
+import java.util.concurrent.CompletionStage;
 import org.jetbrains.annotations.ApiStatus;
 
 /**
@@ -35,6 +35,28 @@ import org.jetbrains.annotations.ApiStatus;
 @ApiStatus.OverrideOnly
 public interface Awaitable<T> {
     /**
+     * Converts a {@link CompletionStage} to an {@link Awaitable}.
+     *
+     * <p>
+     * This method allows a {@link CompletionStage} to be used in a coroutine system by converting it into an
+     * {@link Awaitable}, which can then be awaited using {@link Co#await(Awaitable)}.
+     * </p>
+     *
+     * @param stage The {@link CompletionStage} to convert.
+     * @param <T>   The type of the result that the {@link CompletionStage} produces.
+     * @return An {@link Awaitable} that may be awaited using {@link Co#await(Awaitable)}.
+     */
+    static <T> Awaitable<T> from(final CompletionStage<T> stage) {
+        return (executor, resume) -> stage.whenComplete((value, throwable) -> {
+            if (throwable != null) {
+                resume.submitError(throwable);
+            } else {
+                resume.submit(value);
+            }
+        });
+    }
+
+    /**
      * Suspends the execution of a coroutine until the asynchronous task represented by this {@code Awaitable} is
      * complete.
      *
@@ -50,7 +72,6 @@ public interface Awaitable<T> {
      * @param resume   A {@link Continuation} that accepts the result of the asynchronous task and resumes the coroutine
      *                 execution. The result is wrapped in a {@link Result} to handle both success and failure cases.
      */
-    @NoThrow
     void execute(final CoroutineExecutor executor, Continuation<T> resume);
 
     /**

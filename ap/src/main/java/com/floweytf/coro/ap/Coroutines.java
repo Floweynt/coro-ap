@@ -4,16 +4,11 @@ import com.floweytf.coro.ap.pass.TransformPass;
 import com.floweytf.coro.ap.pass.ValidatePass;
 import com.sun.source.util.TaskEvent;
 import com.sun.source.util.TaskListener;
-import com.sun.tools.javac.code.Symbol;
-import com.sun.tools.javac.tree.JCTree;
+import com.sun.tools.javac.tree.JCTree.JCCompilationUnit;
+import com.sun.tools.javac.tree.JCTree.JCLambda;
 import com.sun.tools.javac.util.Context;
 import com.sun.tools.javac.util.JavacMessages;
-import com.sun.tools.javac.util.Log;
 import com.sun.tools.javac.util.Names;
-import it.unimi.dsi.fastutil.ints.IntArrayList;
-import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
-import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
-import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.util.Collections;
@@ -22,19 +17,18 @@ import java.util.List;
 import java.util.ResourceBundle;
 import org.jetbrains.annotations.NotNull;
 
+import static com.sun.tools.javac.code.Symbol.ClassSymbol;
+
 public class Coroutines implements TaskListener {
     private final Context context;
-    private final CoroNames coroNames;
+    private final CoroutineNames coroutineNames;
+    private final Debug debug = new Debug();
     private long compileTime;
-
-    private final MethodsReport methodsReport = new MethodsReport(
-        new ReferenceOpenHashSet<>(),
-        new Reference2ObjectOpenHashMap<>()
-    );
+    private final AnalysisReport report;
 
     public Coroutines(final Context context) {
         this.context = context;
-        coroNames = new CoroNames(Names.instance(context));
+        coroutineNames = new CoroutineNames(Names.instance(context));
 
         JavacMessages.instance(context).add(locale -> new ResourceBundle() {
             @Override
@@ -47,14 +41,8 @@ public class Coroutines implements TaskListener {
                 return Collections.enumeration(List.of(Constants.DIAGNOSTIC_KEY));
             }
         });
-    }
 
-    public void reportCoroutineMethod(final Symbol.ClassSymbol enclosingClass) {
-        methodsReport.classesWithCoroutines().add(enclosingClass);
-    }
-
-    public void reportCoroutineLambdaMethod(final Symbol.ClassSymbol enclosingClass, final int id) {
-        methodsReport.lambdaCoroutineMethods().computeIfAbsent(enclosingClass, ignored -> new IntArrayList()).add(id);
+        this.report = new AnalysisReport(this);
     }
 
     @Override
@@ -63,37 +51,37 @@ public class Coroutines implements TaskListener {
         case ANALYZE -> {
             try {
                 final var startTime = System.currentTimeMillis();
-                ((JCTree.JCCompilationUnit) event.getCompilationUnit()).accept(new ValidatePass(this, event));
+                ((JCCompilationUnit) event.getCompilationUnit()).accept(new ValidatePass(this, event));
                 final var finalTime = System.currentTimeMillis();
                 compileTime += finalTime - startTime;
             } catch (final Throwable e) {
                 final var sw = new StringWriter();
                 e.printStackTrace(new PrintWriter(sw));
-                Log.instance(context).printRawLines(
-                    "[Coro] while parsing file %s: %s\n%s".formatted(
-                        event.getCompilationUnit().getSourceFile().getName(),
-                        e.getMessage(),
-                        sw
-                    )
+                debug.warnPrintln(
+                    "while parsing file %s: %s\n%s",
+                    event.getCompilationUnit().getSourceFile().getName(),
+                    e.getMessage(),
+                    sw
                 );
 
                 // rethrow
                 throw e;
             }
         }
+        case GENERATE -> report.reportGeneratedSymbol((ClassSymbol) event.getTypeElement());
         case COMPILATION -> {
-            Log.instance(context).printRawLines("[Coro] analysis time: %sms".formatted(compileTime));
+            debug.perfPrintln("analysis time: %sms", compileTime);
             compileTime = 0;
 
             final var startTime = System.currentTimeMillis();
             try {
-                new TransformPass(this).process(methodsReport);
-            } catch (final IOException e) {
+                new TransformPass(this).process(report);
+            } catch (final Exception e) {
                 throw new RuntimeException(e);
             }
             final var finalTime = System.currentTimeMillis();
 
-            Log.instance(context).printRawLines("[Coro] codegen time: %sms".formatted(finalTime - startTime));
+            debug.perfPrintln("codegen time: %sms", finalTime - startTime);
         }
         }
     }
@@ -102,7 +90,19 @@ public class Coroutines implements TaskListener {
         return context;
     }
 
-    public CoroNames coroNames() {
-        return coroNames;
+    public CoroutineNames coroutineNames() {
+        return coroutineNames;
+    }
+
+    public Debug debug() {
+        return debug;
+    }
+
+    public void reportCoroutineMethod(final ClassSymbol enclosingClass) {
+        report.reportCoroutineMethod(enclosingClass);
+    }
+
+    public void reportCoroutineLambdaMethod(final ClassSymbol enclosingClass, final JCLambda lambda) {
+        report.reportLambda(enclosingClass, lambda);
     }
 }

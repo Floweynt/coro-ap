@@ -32,8 +32,6 @@ import java.util.function.Supplier;
  * </p>
  *
  * @see Co#coroutine(Object)
- * @see Co#launch(Supplier)
- * @see Co#launch(CoroutineExecutor, Supplier)
  */
 @Target(ElementType.TYPE_USE)
 @Retention(RetentionPolicy.CLASS)

@@ -6,8 +6,13 @@ import java.util.function.Function;
 
 record Value<T>(T t) implements Result<T> {
     @Override
-    public Optional<T> value() {
-        return Optional.of(t);
+    public boolean hasValue() {
+        return true;
+    }
+
+    @Override
+    public T value() {
+        return t;
     }
 
     @Override

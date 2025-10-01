@@ -3,7 +3,7 @@ package com.floweytf.coro.ap;
 import com.sun.tools.javac.util.Name;
 import com.sun.tools.javac.util.Names;
 
-public record CoroNames(
+public record CoroutineNames(
     Names names,
     Name coroutineAnnotationName,
     Name coClassName,
@@ -14,7 +14,7 @@ public record CoroNames(
     Name currentExecutorName,
     Name makeCoroAnnotationName
 ) {
-    CoroNames(final Names names) {
+    CoroutineNames(final Names names) {
         this(
             names,
             names.fromString(Constants.COROUTINE_ANN),

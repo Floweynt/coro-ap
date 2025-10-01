@@ -1,8 +1,8 @@
 package com.floweytf.coro.concepts;
 
 import com.floweytf.coro.annotations.Coroutine;
-import com.floweytf.coro.annotations.NoThrow;
 import com.floweytf.coro.support.Result;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 import org.jetbrains.annotations.ApiStatus;
 
@@ -37,7 +37,6 @@ public interface Task<T> extends Awaitable<T> {
      *                 context  in which the coroutine is executed (e.g., on a particular thread, asynchronously, etc.).
      * @return {@code this}
      */
-    @NoThrow
     Task<T> begin(CoroutineExecutor executor);
 
     /**
@@ -51,7 +50,6 @@ public interface Task<T> extends Awaitable<T> {
      * @return {@code this}
      * @see CoroutineExecutor#EAGER
      */
-    @NoThrow
     default Task<T> begin() {
         return begin(CoroutineExecutor.EAGER);
     }
@@ -81,6 +79,11 @@ public interface Task<T> extends Awaitable<T> {
      * @param resume   The continuation function to call when the task completes.
      */
     @Override
-    @NoThrow
     void execute(CoroutineExecutor executor, Continuation<T> resume);
+
+    default CompletableFuture<T> asFuture() {
+        final var future = new CompletableFuture<T>();
+        onComplete(res -> res.match(future::complete, future::completeExceptionally));
+        return future;
+    }
 }

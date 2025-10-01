@@ -33,12 +33,19 @@ public sealed interface Result<T> permits Error, Value {
     }
 
     /**
+     * Returns true if the result contains a value, meaning it represents a successful outcome.
+     *
+     * @return true if the result contains a value, false if it contains an error.
+     */
+    boolean hasValue();
+
+    /**
      * Obtains the underlying value, if present. This method is used when the result is a success.
      *
      * @return An {@link Optional} of the underlying value if present, or an empty {@link Optional} if this result is
      * an error.
      */
-    Optional<T> value();
+    T value();
 
     /**
      * Obtains the underlying error, if present. This method is used when the result is an error.
@@ -85,15 +92,6 @@ public sealed interface Result<T> permits Error, Value {
      * @param errorConsumer The consumer to handle the error if this result is a failure.
      */
     void match(Consumer<T> valueConsumer, Consumer<Throwable> errorConsumer);
-
-    /**
-     * Returns true if the result contains a value, meaning it represents a successful outcome.
-     *
-     * @return true if the result contains a value, false if it contains an error.
-     */
-    default boolean hasValue() {
-        return value().isPresent();
-    }
 
     /**
      * Returns true if the result contains an error, meaning it represents a failure outcome.

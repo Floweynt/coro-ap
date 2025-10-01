@@ -1,8 +1,9 @@
 package com.floweytf.coro.concepts;
 
 import com.floweytf.coro.annotations.Coroutine;
-import com.floweytf.coro.annotations.NoThrow;
+import com.floweytf.coro.annotations.MakeCoro;
 import java.util.concurrent.Executor;
+import java.util.function.Supplier;
 import org.jetbrains.annotations.ApiStatus;
 
 /**
@@ -31,7 +32,6 @@ public interface CoroutineExecutor {
      * @param handler The task (continuation) to run. This is typically the next step or the callback to execute after
      *                a coroutine suspends.
      */
-    @NoThrow
     void executeTask(Runnable handler);
 
     /**
@@ -40,7 +40,6 @@ public interface CoroutineExecutor {
      * @param task      The task that is being suspended.
      * @param awaitable The awaitable to wait on.
      */
-    @NoThrow
     default void onSuspend(final Task<?> task, final Awaitable<?> awaitable) {
     }
 
@@ -52,7 +51,6 @@ public interface CoroutineExecutor {
      * @param result    The result of the awaitable.
      * @param <T>       The result type of the awaitable.
      */
-    @NoThrow
     default <T> void onResume(final Task<?> task, final Awaitable<T> awaitable, final T result) {
     }
 
@@ -63,8 +61,23 @@ public interface CoroutineExecutor {
      * @param awaitable The awaitable that has just completed.
      * @param error     The error that was thrown.
      */
-    @NoThrow
     default void onResumeExceptionally(final Task<?> task, final Awaitable<?> awaitable, final Throwable error) {
+    }
+
+    /**
+     * Launches a coroutine with this.
+     *
+     * @param coroutine The coroutine to launch, which may be a <i>coroutine lambda</i>.
+     * @param <T>       The result-type of the coroutine.
+     * @return The task launched.
+     * @see Task#begin(CoroutineExecutor)
+     */
+    default <T> Task<T> launch(@MakeCoro final Supplier<Task<T>> coroutine) {
+        return coroutine.get().begin(this);
+    }
+
+    default <T> T launchBlocking(@MakeCoro final Supplier<Task<T>> coroutine) {
+        return launch(coroutine).asFuture().join();
     }
 
     /**

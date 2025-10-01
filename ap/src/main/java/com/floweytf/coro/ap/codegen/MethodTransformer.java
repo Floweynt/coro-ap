@@ -1,5 +1,6 @@
 package com.floweytf.coro.ap.codegen;
 
+import com.floweytf.coro.ap.Debug;
 import com.floweytf.coro.ap.util.Util;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntList;
@@ -36,7 +37,9 @@ import org.objectweb.asm.tree.analysis.Analyzer;
 import org.objectweb.asm.tree.analysis.AnalyzerException;
 import org.objectweb.asm.tree.analysis.BasicVerifier;
 import org.objectweb.asm.util.CheckClassAdapter;
+import org.objectweb.asm.util.Textifier;
 import org.objectweb.asm.util.TraceClassVisitor;
+import org.objectweb.asm.util.TraceMethodVisitor;
 
 import static com.floweytf.coro.ap.Constants.AWAIT_KW;
 import static com.floweytf.coro.ap.Constants.BASIC_TASK_CHECK_THROW;
@@ -57,7 +60,7 @@ import static com.floweytf.coro.ap.Constants.RET_KW;
 import static com.floweytf.coro.ap.Constants.THROWABLE_CLASS_BIN;
 import static com.floweytf.coro.ap.Constants.THROWABLE_TYPE;
 
-public class MethodTransformer {
+public final class MethodTransformer {
     private static final int LVT_THIS = 0;
     private static final int LVT_STATE = 1;
     private static final int LVT_IS_EXCEPTION = LVT_STATE + 1;
@@ -416,6 +419,8 @@ public class MethodTransformer {
         output.insert(new VarInsnNode(Opcodes.ILOAD, LVT_STATE));
 
         // generate the exception handler
+        tryCatchHandler.onFinished();
+
         Util.withMethodBody(output, (start, end) -> {
             final var catcher = new LabelNode();
             output.add(catcher);
@@ -550,22 +555,38 @@ public class MethodTransformer {
         fieldAllocator.generateFields(fields, access);
     }
 
-    public final ClassNode generate() {
+    private void generate() {
         codegenImplMethod();
         codegenConstructor();
         codegenStaticConstructor();
         codegenCoMethod();
         codegenFields();
         codegenSuspendPointMetadataGetter();
+    }
 
-        if (Boolean.getBoolean("coro.debug")) {
-            try {
-                new Analyzer<>(new BasicVerifier()).analyzeAndComputeMaxs(implClass.name, implMethod);
-            } catch (final AnalyzerException e) {
-                throw new RuntimeException(e);
-            }
+    public ClassNode generate(final Debug debug) {
+        if (debug.shouldDump(coMethodOwner, coMethod)) {
+            debug.dump(out -> {
+                out.printf("-- Codegen report for %s::%s%s --\n", coMethodOwner.name, coMethod.name, coMethod.desc);
+                out.println("-- Pre-transformed class bytecode --");
+                final var t = new Textifier();
+                coMethod.accept(new TraceMethodVisitor(t));
+                t.print(out);
 
-            implClass.accept(new CheckClassAdapter(new TraceClassVisitor(new PrintWriter(System.out)), true));
+                generate();
+
+                out.println("-- Generated class bytecode --");
+
+                try {
+                    new Analyzer<>(new BasicVerifier()).analyzeAndComputeMaxs(implClass.name, implMethod);
+                } catch (final AnalyzerException e) {
+                    throw new RuntimeException(e);
+                }
+
+                implClass.accept(new CheckClassAdapter(new TraceClassVisitor(out), true));
+            });
+        } else {
+            generate();
         }
 
         return implClass;

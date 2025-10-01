@@ -2,12 +2,18 @@ package com.floweytf.coro.ap.pass;
 
 import com.floweytf.coro.ap.Coroutines;
 import com.floweytf.coro.ap.DirectiveKind;
-import com.floweytf.coro.ap.util.ErrorReporter;
+import com.floweytf.coro.ap.util.Diagnostics;
 import com.floweytf.coro.ap.util.scanners.CoroutineProcessingTreeScannerBase;
 import com.sun.source.util.TaskEvent;
 import com.sun.tools.javac.code.Symbol;
+import com.sun.tools.javac.code.Symbol.MethodSymbol;
 import com.sun.tools.javac.tree.JCTree;
+import com.sun.tools.javac.tree.JCTree.JCBlock;
+import com.sun.tools.javac.tree.JCTree.JCClassDecl;
+import com.sun.tools.javac.tree.JCTree.JCExpression;
+import com.sun.tools.javac.tree.JCTree.JCExpressionStatement;
 import com.sun.tools.javac.tree.JCTree.JCMethodInvocation;
+import com.sun.tools.javac.tree.JCTree.JCReturn;
 import java.util.function.UnaryOperator;
 
 import static com.floweytf.coro.ap.CoroutineKind.NONE;
@@ -17,20 +23,20 @@ public class ValidatePass extends CoroutineProcessingTreeScannerBase {
     private final Coroutines coroutines;
 
     public ValidatePass(final Coroutines coroutines, final TaskEvent event) {
-        super(coroutines.coroNames(), new ErrorReporter(coroutines, event));
+        super(coroutines.coroutineNames(), new Diagnostics(coroutines, event));
         this.coroutines = coroutines;
     }
 
     // this is a bit of a janky workaround that only exists because we have no other way of passing data
     // into the code generator :/
-    private void encodeSuspensionPointData(final JCTree.JCExpression expression, final JCTree tree) {
+    private void encodeSuspensionPointData(final JCExpression expression, final JCTree tree) {
         final UnaryOperator<Symbol> mapper = symbol -> {
-            final var mSym = (Symbol.MethodSymbol) symbol;
+            final var mSym = (MethodSymbol) symbol;
 
-            return new Symbol.MethodSymbol(
+            return new MethodSymbol(
                 mSym.flags_field,
                 names.names().fromString(
-                    mSym.name.toString() + "@" + errorReporter.getSource().getLineNumber(tree.pos)
+                    mSym.name.toString() + "@" + diagnostics.getSource().getLineNumber(tree.pos)
                 ),
                 mSym.type, mSym.owner
             );
@@ -44,7 +50,7 @@ public class ValidatePass extends CoroutineProcessingTreeScannerBase {
     }
 
     @Override
-    public void visitReturn(final JCTree.JCReturn tree) {
+    public void visitReturn(final JCReturn tree) {
         if (coroutineKind.get() == NONE) {
             return;
         }
@@ -58,7 +64,7 @@ public class ValidatePass extends CoroutineProcessingTreeScannerBase {
             return;
         }
 
-        errorReporter.reportError(tree.expr, "returning from coroutine must be done via Co.ret");
+        diagnostics.reportError(tree.expr, "returning from coroutine must be done via Co.ret");
         super.visitReturn(tree);
     }
 
@@ -67,32 +73,51 @@ public class ValidatePass extends CoroutineProcessingTreeScannerBase {
         switch (directive) {
         case AWAIT -> {
             if (coroutineKind.get() == NONE) {
-                errorReporter.reportError(invocation, "Co.await() can only be used inside a coroutine");
+                diagnostics.reportError(invocation, "Co.await() can only be used inside a coroutine");
             }
 
             if (isSync.get()) {
-                errorReporter.reportError(invocation, "Co.await() cannot appear in a synchronized block");
+                diagnostics.reportError(invocation, "Co.await() cannot appear in a synchronized block");
             } else {
                 encodeSuspensionPointData(invocation.meth, invocation);
             }
         }
         case CURRENT_EXECUTOR -> {
             if (coroutineKind.get() == NONE) {
-                errorReporter.reportError(invocation, "Co.currentExecutor() can only be used inside a coroutine");
+                diagnostics.reportError(invocation, "Co.currentExecutor() can only be used inside a coroutine");
             }
         }
         case RETURN ->
-            errorReporter.reportError(invocation, "illegal use of Co.ret, must be in the form `return Co.ret(...)`");
+            diagnostics.reportError(invocation, "illegal use of Co.ret, must be in the form `return Co.ret(...)`");
         }
     }
 
     @Override
-    protected void onCoroutineMethod(final JCTree.JCClassDecl declaringClass) {
+    protected void onCoroutineMethod(final JCClassDecl declaringClass) {
         coroutines.reportCoroutineMethod(declaringClass.sym);
     }
 
     @Override
-    protected void onCoroutineLambda(final JCTree.JCClassDecl declaringClass, final int id) {
-        coroutines.reportCoroutineLambdaMethod(declaringClass.sym, id);
+    protected void onCoroutineLambda(final JCClassDecl declaringClass, final JCTree.JCLambda lambda) {
+        coroutines.reportCoroutineLambdaMethod(declaringClass.sym, lambda);
+    }
+
+    @Override
+    public void visitBlock(final JCBlock tree) {
+        super.visitBlock(tree);
+
+        for (final var stat : tree.stats) {
+            final var flag = stat instanceof final JCExpressionStatement exprStmt &&
+                exprStmt.expr instanceof final JCMethodInvocation methodInvocation &&
+                getSymbol(methodInvocation.meth) instanceof final MethodSymbol methodSymbol &&
+                methodSymbol.getMetadata() != null &&
+                methodSymbol.getMetadata().getDeclarationAttributes().stream()
+                    .anyMatch(compound -> compound.type.tsym.flatName() == names.coroutineAnnotationName());
+
+            if (flag) {
+                diagnostics.reportWarning(stat, "return value of @Coroutine method ignored, did you forget to await " +
+                    "or launch the task?");
+            }
+        }
     }
 }

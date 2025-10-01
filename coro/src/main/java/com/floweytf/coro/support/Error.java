@@ -1,13 +1,19 @@
 package com.floweytf.coro.support;
 
+import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
 record Error<T>(Throwable err) implements Result<T> {
     @Override
-    public Optional<T> value() {
-        return Optional.empty();
+    public boolean hasValue() {
+        return false;
+    }
+
+    @Override
+    public T value() {
+        throw new NoSuchElementException();
     }
 
     @Override

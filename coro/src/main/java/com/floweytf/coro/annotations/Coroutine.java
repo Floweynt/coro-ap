@@ -4,7 +4,6 @@ import com.floweytf.coro.Co;
 import com.floweytf.coro.concepts.Awaitable;
 import com.floweytf.coro.concepts.CoroutineExecutor;
 import com.floweytf.coro.concepts.Task;
-import com.floweytf.coro.support.Awaitables;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -64,7 +63,6 @@ import static com.floweytf.coro.concepts.Awaitable.Unwrapped;
  * @see Awaitable
  * @see CoroutineExecutor
  * @see Task
- * @see Awaitables
  */
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.CLASS)

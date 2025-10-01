@@ -2,6 +2,7 @@ package com.floweytf.coro.ap.codegen;
 
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -52,15 +53,32 @@ import org.objectweb.asm.tree.TryCatchBlockNode;
  * }</pre>
  */
 class TryCatchHandler {
-    private class TryCatchHelper extends TryCatchBlockNode {
+    private static class IndexedTryCatchBlock extends TryCatchBlockNode {
+        private final int index;
+
+        public IndexedTryCatchBlock(
+            final LabelNode start, final LabelNode end, final LabelNode handler,
+            final String type, final int index
+        ) {
+            super(start, end, handler, type);
+            this.index = index;
+        }
+
+        public int index() {
+            return index;
+        }
+    }
+
+    private class TryCatchHelper extends IndexedTryCatchBlock {
         private final LabelNode unclonedEndNode;
 
-        private TryCatchHelper(final TryCatchBlockNode node, final LabelCloner labelCloner) {
+        private TryCatchHelper(final TryCatchBlockNode node, final LabelCloner labelCloner, final int index) {
             super(
                 labelCloner.get(node.start),
                 labelCloner.get(node.end),
                 labelCloner.get(node.handler),
-                node.type
+                node.type,
+                index
             );
             this.unclonedEndNode = node.end;
             this.invisibleTypeAnnotations = node.invisibleTypeAnnotations;
@@ -68,17 +86,18 @@ class TryCatchHandler {
         }
 
         private void splitBlock(final LabelNode startNode, final LabelNode endNode) {
-            final var outputNode = new TryCatchBlockNode(
+            final var outputNode = new IndexedTryCatchBlock(
                 start,
                 startNode,
                 handler,
-                type
+                type,
+                index()
             );
 
             outputNode.invisibleTypeAnnotations = invisibleTypeAnnotations;
             outputNode.visibleTypeAnnotations = visibleTypeAnnotations;
 
-            implMethod.tryCatchBlocks.add(outputNode);
+            tryCatchBlocks.add(outputNode);
 
             // update start node
             start = endNode;
@@ -86,6 +105,8 @@ class TryCatchHandler {
     }
 
     private final MethodNode implMethod;
+
+    private final List<IndexedTryCatchBlock> tryCatchBlocks = new ArrayList<>();
 
     // note: both maps are indexed by the pre-cloned label
     private final Map<LabelNode, List<TryCatchHelper>> byStartLabel = new HashMap<>();
@@ -96,9 +117,10 @@ class TryCatchHandler {
         this.implMethod = implMethod;
 
         if (originalMethod.tryCatchBlocks != null) {
-            for (final var tryCatchBlock : originalMethod.tryCatchBlocks) {
+            for (int i = 0; i < originalMethod.tryCatchBlocks.size(); i++) {
+                final var tryCatchBlock = originalMethod.tryCatchBlocks.get(i);
                 byStartLabel.computeIfAbsent(tryCatchBlock.start, ignored -> new ArrayList<>())
-                    .add(new TryCatchHelper(tryCatchBlock, labelCloner));
+                    .add(new TryCatchHelper(tryCatchBlock, labelCloner, i));
             }
         }
     }
@@ -115,9 +137,14 @@ class TryCatchHandler {
         }
 
         if (exitedBlocks != null) {
-            implMethod.tryCatchBlocks.addAll(exitedBlocks);
+            tryCatchBlocks.addAll(exitedBlocks);
             activeLabels.remove(node);
         }
+    }
+
+    void onFinished() {
+        tryCatchBlocks.sort(Comparator.comparingInt(IndexedTryCatchBlock::index));
+        implMethod.tryCatchBlocks = new ArrayList<>(tryCatchBlocks);
     }
 
     /**

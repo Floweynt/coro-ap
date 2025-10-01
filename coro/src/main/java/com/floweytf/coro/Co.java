@@ -104,28 +104,15 @@ public class Co {
         return lambdaExpr;
     }
 
-    /**
-     * Launches a coroutine.
-     *
-     * @param coroutine The coroutine to launch, which may be a <i>coroutine lambda</i>.
-     * @param <T>       The result-type of the coroutine.
-     * @return The task launched.
-     * @see Task#begin()
-     */
-    public static <T> Task<T> launch(@MakeCoro final Supplier<Task<T>> coroutine) {
-        return coroutine.get().begin();
+    public static <T> Task<T> makeTask(@MakeCoro final Supplier<Task<T>> coroutine) {
+        return coroutine.get();
     }
 
-    /**
-     * Launches a coroutine with a specific executor.
-     *
-     * @param executor  The executor to use when launching the coroutine.
-     * @param coroutine The coroutine to launch, which may be a <i>coroutine lambda</i>.
-     * @param <T>       The result-type of the coroutine.
-     * @return The task launched.
-     * @see Task#begin(CoroutineExecutor)
-     */
-    public static <T> Task<T> launch(final CoroutineExecutor executor, @MakeCoro final Supplier<Task<T>> coroutine) {
-        return coroutine.get().begin(executor);
+    public static <T> Task<T> launch(@MakeCoro final Supplier<Task<T>> coroutine) {
+        return CoroutineExecutor.EAGER.launch(coroutine);
+    }
+
+    public static <T> T launchBlocking(@MakeCoro final Supplier<Task<T>> coroutine) {
+        return CoroutineExecutor.EAGER.launchBlocking(coroutine);
     }
 }

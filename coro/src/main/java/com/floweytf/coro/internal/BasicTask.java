@@ -1,6 +1,5 @@
 package com.floweytf.coro.internal;
 
-import com.floweytf.coro.annotations.NoThrow;
 import com.floweytf.coro.concepts.Awaitable;
 import com.floweytf.coro.concepts.Continuation;
 import com.floweytf.coro.concepts.CoroutineExecutor;
@@ -133,7 +132,7 @@ public abstract class BasicTask<T> implements Task<T> {
             COMPLETE_STACK = lookup.findVarHandle(BasicTask.class, "completeStack", Entry.class);
             MY_EXECUTOR = lookup.findVarHandle(BasicTask.class, "myExecutor", CoroutineExecutor.class);
             RESULT = lookup.findVarHandle(BasicTask.class, "result", Result.class);
-            RESUME_CONTINUATION_FLAG = lookup.findVarHandle(ScheduledContinuation.class, "flag", boolean.class);
+            RESUME_CONTINUATION_FLAG = lookup.findVarHandle(BaseContinuation.class, "flag", boolean.class);
         } catch (final NoSuchFieldException | IllegalAccessException e) {
             throw new RuntimeException(e);
         }
@@ -146,7 +145,6 @@ public abstract class BasicTask<T> implements Task<T> {
     }
 
     @Override
-    @NoThrow
     public Task<T> begin(final CoroutineExecutor executor) {
         // Need non-weak CAS here, since this absolutely cannot fail (no loop)
         // if it's nonnull, that means begin() was already called and there's no need to start it again
@@ -158,7 +156,6 @@ public abstract class BasicTask<T> implements Task<T> {
     }
 
     @Override
-    @NoThrow
     public void onComplete(final Consumer<Result<T>> resume) {
         final var newNode = new Entry<T>(x -> myExecutor.executeTask(() -> resume.accept(x)));
 
@@ -209,7 +206,6 @@ public abstract class BasicTask<T> implements Task<T> {
     }
 
     @Override
-    @NoThrow
     public void execute(final CoroutineExecutor executor, final Continuation<T> resume) {
         begin(executor);
         onComplete(tResult -> tResult.match(resume::submit, resume::submitError));
@@ -220,12 +216,16 @@ public abstract class BasicTask<T> implements Task<T> {
         self.suspendPointId = resumeState;
         self.currentAwaitable = awaitable;
 
-        self.getExecutor().onSuspend(self, awaitable);
-        awaitable.execute(self.getExecutor(),
-            awaitable instanceof Awaitable.Unwrapped<T> ?
-                new ImmediateContinuation(awaitable, self, resumeState) :
-                new ScheduledContinuation(awaitable, self, resumeState)
-        );
+        final var continuation = awaitable instanceof Awaitable.Unwrapped<T> ?
+            new ImmediateContinuation(awaitable, self, resumeState) :
+            new ScheduledContinuation(awaitable, self, resumeState);
+
+        try {
+            self.getExecutor().onSuspend(self, awaitable);
+            awaitable.execute(self.getExecutor(), continuation);
+        } catch (final Throwable th) {
+            continuation.submitError(th);
+        }
     }
 
     protected static <T> void completeSuccess(final T val, final BasicTask<T> self) {

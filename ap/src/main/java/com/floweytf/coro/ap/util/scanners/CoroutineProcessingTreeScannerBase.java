@@ -1,9 +1,9 @@
 package com.floweytf.coro.ap.util.scanners;
 
-import com.floweytf.coro.ap.CoroNames;
+import com.floweytf.coro.ap.CoroutineNames;
 import com.floweytf.coro.ap.CoroutineKind;
 import com.floweytf.coro.ap.DirectiveKind;
-import com.floweytf.coro.ap.util.ErrorReporter;
+import com.floweytf.coro.ap.util.Diagnostics;
 import com.floweytf.coro.ap.util.Frame;
 import com.sun.tools.javac.code.Flags;
 import com.sun.tools.javac.code.Symbol;
@@ -27,16 +27,16 @@ public abstract class CoroutineProcessingTreeScannerBase extends ContextTracking
     protected record InvocationData(@Nullable DirectiveKind directive, @Nullable MethodSymbol methodSymbol) {
     }
 
-    protected final ErrorReporter errorReporter;
-    protected final CoroNames names;
+    protected final Diagnostics diagnostics;
+    protected final CoroutineNames names;
     protected final Frame<CoroutineKind> coroutineKind = new Frame<>();
 
-    public CoroutineProcessingTreeScannerBase(final CoroNames names, final ErrorReporter errorReporter) {
-        this.errorReporter = errorReporter;
+    public CoroutineProcessingTreeScannerBase(final CoroutineNames names, final Diagnostics diagnostics) {
+        this.diagnostics = diagnostics;
         this.names = names;
     }
 
-    private Symbol getMethodSymbol(final JCExpression expression) {
+    protected static Symbol getSymbol(final JCExpression expression) {
         Symbol symbol = null;
         if (expression instanceof final JCIdent identifier) {
             symbol = identifier.sym;
@@ -71,7 +71,7 @@ public abstract class CoroutineProcessingTreeScannerBase extends ContextTracking
     }
 
     protected final InvocationData readInvocationData(final JCMethodInvocation tree) {
-        final var symbol = getMethodSymbol(tree.meth);
+        final var symbol = getSymbol(tree.meth);
         final var methodSymbol = symbol instanceof final MethodSymbol ms ? ms : null;
 
         final DirectiveKind kind;
@@ -107,13 +107,13 @@ public abstract class CoroutineProcessingTreeScannerBase extends ContextTracking
 
         if (coroAnnotation.isPresent()) {
             if ((tree.mods.flags & Flags.SYNCHRONIZED) != 0) {
-                errorReporter.reportError(coroAnnotation.get(), "Coroutine methods cannot be synchronized");
+                diagnostics.reportError(coroAnnotation.get(), "Coroutine methods cannot be synchronized");
             }
 
             kind = getKindFromReturnType(tree.restype);
 
             if (kind == CoroutineKind.NONE) {
-                errorReporter.reportError(tree.restype, "Coroutine methods must return either Generator<T> or Task<T>");
+                diagnostics.reportError(tree.restype, "Coroutine methods must return either Generator<T> or Task<T>");
             }
         }
 
@@ -125,7 +125,7 @@ public abstract class CoroutineProcessingTreeScannerBase extends ContextTracking
     }
 
     private boolean[] buildIsCoroArgTable(final InvocationData data, final JCMethodInvocation tree) {
-        // TODO: cache this on JCMethodInvocation
+        // TODO: cache this on methodSymbol
         final var mSym = data.methodSymbol();
         final var flags = new boolean[tree.args.size()];
 
@@ -159,7 +159,7 @@ public abstract class CoroutineProcessingTreeScannerBase extends ContextTracking
         for (final var arg : tree.args) {
             if (isCoroArg[argIdx] && arg instanceof final JCLambda lambda) {
                 // make this lambda a coroutine!
-                onCoroutineLambda(currentClass.get(), lambdaCount.get());
+                onCoroutineLambda(currentClass.get(), lambda);
                 coroutineKind.push(CoroutineKind.TASK, () -> super.visitLambda(lambda));
             } else {
                 arg.accept(this);
@@ -174,7 +174,7 @@ public abstract class CoroutineProcessingTreeScannerBase extends ContextTracking
 
     protected abstract void onCoroutineMethod(JCClassDecl declaringClass);
 
-    protected abstract void onCoroutineLambda(JCClassDecl declaringClass, int id);
+    protected abstract void onCoroutineLambda(JCClassDecl declaringClass, JCLambda lambda);
 
     protected abstract void visitCoroutineMethod(final DirectiveKind directive, final JCMethodInvocation invocation);
 }
