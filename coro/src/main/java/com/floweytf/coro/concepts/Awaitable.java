@@ -3,6 +3,7 @@ package com.floweytf.coro.concepts;
 import com.floweytf.coro.Co;
 import com.floweytf.coro.support.Result;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.Executor;
 import org.jetbrains.annotations.ApiStatus;
 
 /**
@@ -54,6 +55,16 @@ public interface Awaitable<T> {
                 resume.submit(value);
             }
         });
+    }
+
+    /**
+     * Creates an awaitable which dispatches execution onto a specific executor.
+     *
+     * @param executor The executor.
+     * @return The task for switching execution to the executor.
+     */
+    static Awaitable.Unwrapped<Void> runOn(final Executor executor) {
+        return (c, resume) -> executor.execute(() -> resume.submit(null));
     }
 
     /**
